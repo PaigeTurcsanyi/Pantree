@@ -1,5 +1,5 @@
 {
-  "name": "pantree-scaffold",
+  "name": "pantree",
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {
@@ -13,6 +13,7 @@
     "expo-linking": "~57.0.4",
     "expo-router": "~57.0.8",
     "expo-splash-screen": "~57.0.5",
+    "expo-sqlite": "~57.0.1",
     "expo-status-bar": "~57.0.1",
     "expo-symbols": "~57.0.1",
     "expo-system-ui": "~57.0.1",
@@ -33,7 +34,6 @@
   },
   "scripts": {
     "start": "expo start",
-    "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
