@@ -17,6 +17,11 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Icon sf="basket" />
       </NativeTabs.Trigger>
 
+      <NativeTabs.Trigger name="import">
+        <NativeTabs.Trigger.Label>Import</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="camera.viewfinder" />
+      </NativeTabs.Trigger>
+
       <NativeTabs.Trigger name="recipes">
         <NativeTabs.Trigger.Label>Recipes</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="book" />

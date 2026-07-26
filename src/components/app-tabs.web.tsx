@@ -26,6 +26,19 @@ export default function AppTabs() {
         }}
       />
       <Tabs.Screen
+        name="import"
+        options={{
+          title: 'Import',
+          tabBarIcon: ({ color, size }) => (
+            <SymbolView
+              name={{ ios: 'camera.viewfinder', web: 'document_scanner' }}
+              tintColor={color}
+              size={size}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="recipes"
         options={{
           title: 'Recipes',

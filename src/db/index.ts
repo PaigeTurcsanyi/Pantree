@@ -6,7 +6,7 @@ export const DATABASE_NAME = 'pantree.db';
  * Bump this and add a migration step below whenever the schema changes.
  * Existing installs migrate forward from whatever version they're on.
  */
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -60,6 +60,16 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
       );
     `);
     version = 1;
+  }
+
+  if (version === 1) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `);
+    version = 2;
   }
 
   await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
