@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, TextInput } from 'react-native';
+import { FlatList, Pressable, StyleSheet, TextInput, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -10,14 +10,22 @@ import { ThemedView } from '@/components/themed-view';
 import { formatQuantity, listPantryItems, PantryItem } from '@/db/pantry';
 import { useTheme } from '@/hooks/use-theme';
 
+const GAP = 12;
+const MIN_CARD_WIDTH = 150;
+
 export default function PantryScreen() {
   const db = useSQLiteContext();
   const router = useRouter();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const [search, setSearch] = useState('');
   const [items, setItems] = useState<PantryItem[]>([]);
   const [loaded, setLoaded] = useState(false);
+
+  // Fill the width with as many cards as fit comfortably — 2 on a phone,
+  // more on an iPad.
+  const columns = Math.max(2, Math.floor((width - 40 + GAP) / (MIN_CARD_WIDTH + GAP)));
 
   const refresh = useCallback(() => {
     listPantryItems(db, search).then((rows) => {
@@ -46,53 +54,18 @@ export default function PantryScreen() {
         placeholder="Search pantry"
         placeholderTextColor={theme.textSecondary}
         autoCorrect={false}
-        style={[
-          styles.search,
-          { backgroundColor: theme.backgroundElement, color: theme.text },
-        ]}
+        style={[styles.search, { backgroundColor: theme.backgroundElement, color: theme.text }]}
       />
 
       <FlatList
+        key={columns}
         data={items}
         keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={items.length === 0 ? styles.emptyList : styles.list}
+        numColumns={columns}
+        columnWrapperStyle={styles.column}
+        contentContainerStyle={items.length === 0 ? styles.emptyList : styles.grid}
         renderItem={({ item }) => (
-          <Pressable onPress={() => router.push(`/item/${item.id}`)}>
-            {({ pressed }) => (
-              <ThemedView
-                type={pressed ? 'backgroundSelected' : 'backgroundElement'}
-                style={styles.row}>
-                {item.photo_url ? (
-                  <Image
-                    source={item.photo_url}
-                    style={styles.thumbnail}
-                    contentFit="contain"
-                    transition={150}
-                  />
-                ) : (
-                  <ThemedView type="backgroundSelected" style={styles.thumbnail}>
-                    <ThemedText type="smallBold" themeColor="textSecondary">
-                      {item.name.slice(0, 1).toUpperCase()}
-                    </ThemedText>
-                  </ThemedView>
-                )}
-                <ThemedView
-                  type={pressed ? 'backgroundSelected' : 'backgroundElement'}
-                  style={styles.rowText}>
-                  <ThemedText>{item.name}</ThemedText>
-                  {item.brand ? (
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {item.brand}
-                    </ThemedText>
-                  ) : null}
-                </ThemedView>
-                <ThemedText type="smallBold" themeColor="textSecondary">
-                  {formatQuantity(item.quantity, item.unit)}
-                  {item.unit === 'each' ? ` ${item.quantity === 1 ? 'item' : 'items'}` : ''}
-                </ThemedText>
-              </ThemedView>
-            )}
-          </Pressable>
+          <PantryCard item={item} onPress={() => router.push(`/item/${item.id}`)} />
         )}
         ListEmptyComponent={
           loaded ? (
@@ -105,6 +78,50 @@ export default function PantryScreen() {
         }
       />
     </ThemedView>
+  );
+}
+
+function PantryCard({ item, onPress }: { item: PantryItem; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={styles.cardPressable}>
+      {({ pressed }) => (
+        <ThemedView
+          type={pressed ? 'backgroundSelected' : 'backgroundElement'}
+          style={styles.card}>
+          <ThemedView type="backgroundSelected" style={styles.photoWrap}>
+            {item.photo_url ? (
+              <Image
+                source={item.photo_url}
+                style={styles.photo}
+                contentFit="contain"
+                transition={150}
+              />
+            ) : (
+              <ThemedText type="title" themeColor="textSecondary" style={styles.placeholderLetter}>
+                {item.name.slice(0, 1).toUpperCase()}
+              </ThemedText>
+            )}
+          </ThemedView>
+
+          <ThemedView
+            type={pressed ? 'backgroundSelected' : 'backgroundElement'}
+            style={styles.cardText}>
+            <ThemedText type="small" numberOfLines={2}>
+              {item.name}
+            </ThemedText>
+            {item.brand ? (
+              <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                {item.brand}
+              </ThemedText>
+            ) : null}
+            <ThemedText type="smallBold" style={styles.quantity}>
+              {formatQuantity(item.quantity, item.unit)}
+              {item.unit === 'each' ? ` ${item.quantity === 1 ? 'item' : 'items'}` : ''}
+            </ThemedText>
+          </ThemedView>
+        </ThemedView>
+      )}
+    </Pressable>
   );
 }
 
@@ -131,9 +148,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 12,
   },
-  list: {
-    gap: 8,
+  grid: {
+    gap: GAP,
     paddingBottom: 24,
+  },
+  column: {
+    gap: GAP,
   },
   emptyList: {
     flexGrow: 1,
@@ -142,24 +162,35 @@ const styles = StyleSheet.create({
   emptyText: {
     textAlign: 'center',
   },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    gap: 12,
-  },
-  rowText: {
+  cardPressable: {
     flex: 1,
-    gap: 2,
   },
-  thumbnail: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
+  card: {
+    flex: 1,
+    borderRadius: 14,
+    padding: 10,
+    gap: 10,
+  },
+  photoWrap: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  photo: {
+    width: '100%',
+    height: '100%',
+  },
+  placeholderLetter: {
+    fontSize: 40,
+    lineHeight: 48,
+  },
+  cardText: {
+    gap: 2,
+  },
+  quantity: {
+    marginTop: 2,
   },
 });
