@@ -28,13 +28,16 @@ onward).
 Building in phases per the spec (§8):
 
 - [x] Phase 1 — scaffold, SQLite wired up, tab skeleton, empty Pantry screen
-- [ ] Phase 2 — manual pantry CRUD
-- [ ] Phase 3 — Open Food Facts enrichment
-- [ ] Phase 4 — screenshot → pantry (Gemini vision + review screen)
-- [ ] Phase 5 — recipes CRUD
-- [ ] Phase 6 — "I made this" deduction
-- [ ] Phase 7 — what can I make? + substitutions
-- [ ] Phase 8 — auto-scaling
+- [x] Phase 2 — manual pantry CRUD
+- [x] Phase 3 — Open Food Facts enrichment
+- [x] Phase 4 — screenshot → pantry (Gemini vision + review screen)
+- [x] Phase 5 — recipes CRUD
+- [x] Phase 6 — "I made this" deduction
+- [x] Phase 7 — what can I make? + substitutions
+- [x] Phase 8 — auto-scaling
+
+Phase 9 (later, per spec): recipe screenshot import, barcode scanning,
+swipe-to-delete, polish, publish prep.
 
 ## Layout
 
