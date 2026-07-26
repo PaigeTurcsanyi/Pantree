@@ -77,6 +77,9 @@ function nameTokens(name: string): string[] {
   return normalizeName(name).split(' ').filter(Boolean).map(singularize);
 }
 
+/** Score floor meaning "one name contains the other", not just shared words. */
+export const NAME_CONTAINMENT_SCORE = 500;
+
 /**
  * Score how well a pantry item matches an ingredient name.
  * 0 means no match; higher is better.
@@ -122,22 +125,29 @@ export function findSubstitutes(
   shortfall: number,
   unit: PantryUnit,
   pantry: PantryItem[],
-  substitutions: Substitution[]
+  substitutions: Substitution[],
+  /** The pantry item already supplying this ingredient, if any. */
+  excludeItemId?: number
 ): SubstituteOption[] {
   if (shortfall <= 0) return [];
 
   const options: SubstituteOption[] = [];
   for (const substitution of substitutions) {
-    if (matchScore(ingredientName, substitution.ingredient) === 0) continue;
+    if (matchScore(ingredientName, substitution.ingredient) < NAME_CONTAINMENT_SCORE) continue;
 
     const amount = round(shortfall * substitution.ratio);
     let best: PantryItem | null = null;
     let bestScore = 0;
     for (const item of pantry) {
+      // Never offer the item that's already covering this ingredient —
+      // "substitute flour with flour" is noise.
+      if (item.id === excludeItemId) continue;
       if (item.unit !== unit) continue;
       if (item.quantity + 1e-9 < amount) continue;
+      // Require a solid name match; loose token overlap pairs unrelated
+      // products like "bread flour" with "all-purpose flour".
       const score = matchScore(substitution.substitute, item.name);
-      if (score > bestScore) {
+      if (score >= NAME_CONTAINMENT_SCORE && score > bestScore) {
         best = item;
         bestScore = score;
       }
@@ -167,7 +177,14 @@ export function checkIngredients(
     const substitutes =
       status === 'enough'
         ? []
-        : findSubstitutes(ingredient.name, needed - available, ingredient.unit, pantry, substitutions);
+        : findSubstitutes(
+            ingredient.name,
+            needed - available,
+            ingredient.unit,
+            pantry,
+            substitutions,
+            match?.id
+          );
 
     return {
       ingredient,
@@ -196,6 +213,21 @@ export function checkIngredients(
       problems.length > 0 && coveredBySubstitute.length === problems.length,
     maxScale,
   };
+}
+
+/**
+ * Largest batch the pantry supports, rounded down to a usable fraction.
+ * Returns null when scaling can't rescue the recipe — either you already
+ * have enough, or something is missing outright and no smaller batch helps.
+ */
+export function suggestScale(check: RecipeCheck): number | null {
+  if (check.canMake) return null;
+  // A missing ingredient stays missing at any scale.
+  if (check.problems.some((problem) => problem.status === 'missing')) return null;
+
+  const fitted = Math.floor(check.maxScale * 100) / 100;
+  if (!Number.isFinite(fitted) || fitted <= 0 || fitted >= 1) return null;
+  return fitted;
 }
 
 /**

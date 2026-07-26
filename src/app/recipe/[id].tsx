@@ -5,7 +5,13 @@ import { Alert, Platform, Pressable, ScrollView, StyleSheet } from 'react-native
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { checkIngredients, deductRecipe, IngredientCheck, RecipeCheck } from '@/db/cooking';
+import {
+  checkIngredients,
+  deductRecipe,
+  IngredientCheck,
+  RecipeCheck,
+  suggestScale,
+} from '@/db/cooking';
 import { formatQuantity, listPantryItems } from '@/db/pantry';
 import { deleteRecipe, getRecipe, RecipeWithIngredients } from '@/db/recipes';
 import { listSubstitutions } from '@/db/substitutions';
@@ -17,28 +23,42 @@ export default function RecipeDetailScreen() {
   const router = useRouter();
   const [recipe, setRecipe] = useState<RecipeWithIngredients | null>(null);
   const [check, setCheck] = useState<RecipeCheck | null>(null);
+  const [scale, setScale] = useState(1);
   const [loaded, setLoaded] = useState(false);
   const [madeMessage, setMadeMessage] = useState('');
 
-  const load = useCallback(async () => {
-    const found = await getRecipe(db, recipeId);
-    setRecipe(found);
-    if (found) {
-      const [pantry, substitutions] = await Promise.all([
-        listPantryItems(db),
-        listSubstitutions(db),
-      ]);
-      setCheck(checkIngredients(found.ingredients, pantry, 1, substitutions));
-    }
-    setLoaded(true);
-  }, [db, recipeId]);
+  const load = useCallback(
+    async (nextScale: number) => {
+      const found = await getRecipe(db, recipeId);
+      setRecipe(found);
+      if (found) {
+        const [pantry, substitutions] = await Promise.all([
+          listPantryItems(db),
+          listSubstitutions(db),
+        ]);
+        setCheck(checkIngredients(found.ingredients, pantry, nextScale, substitutions));
+      }
+      setLoaded(true);
+    },
+    [db, recipeId]
+  );
 
   useFocusEffect(
     useCallback(() => {
       setMadeMessage('');
-      void load();
+      setScale(1);
+      void load(1);
     }, [load])
   );
+
+  const applyScale = (next: number) => {
+    setScale(next);
+    setMadeMessage('');
+    void load(next);
+  };
+
+  // Suggested "fit my pantry" scale, always measured against a full batch.
+  const fitScale = check && scale === 1 ? suggestScale(check) : null;
 
   const confirmDelete = () => {
     const doDelete = async () => {
@@ -60,7 +80,7 @@ export default function RecipeDetailScreen() {
     if (!check || !recipe) return;
     const doDeduct = async () => {
       const { deducted, skipped } = await deductRecipe(db, check.checks);
-      await load();
+      await load(scale);
       const deductedText = `Deducted ${deducted} ingredient${deducted === 1 ? '' : 's'}`;
       setMadeMessage(
         skipped > 0
@@ -113,11 +133,49 @@ export default function RecipeDetailScreen() {
         <ThemedText type="subtitle">{recipe.title}</ThemedText>
         {recipe.servings ? (
           <ThemedText type="small" themeColor="textSecondary">
-            Serves {recipe.servings}
+            Serves {formatNumber(recipe.servings * scale)}
+            {scale !== 1 ? ` (${formatNumber(recipe.servings)} at full batch)` : ''}
           </ThemedText>
         ) : null}
 
         {check && <MakeStatus check={check} />}
+
+        {recipe.ingredients.length > 0 && (
+          <ThemedView style={styles.scaleRow}>
+            <ThemedText type="small" themeColor="textSecondary">
+              Batch
+            </ThemedText>
+            {[0.5, 1, 2].map((option) => (
+              <Pressable key={option} onPress={() => applyScale(option)}>
+                <ThemedView
+                  type={scale === option ? 'backgroundSelected' : 'backgroundElement'}
+                  style={styles.scalePill}>
+                  <ThemedText type={scale === option ? 'smallBold' : 'small'}>
+                    {formatNumber(option)}×
+                  </ThemedText>
+                </ThemedView>
+              </Pressable>
+            ))}
+            {scale !== 1 && ![0.5, 2].includes(scale) && (
+              <ThemedView type="backgroundSelected" style={styles.scalePill}>
+                <ThemedText type="smallBold">{formatNumber(scale)}×</ThemedText>
+              </ThemedView>
+            )}
+          </ThemedView>
+        )}
+
+        {fitScale !== null && (
+          <Pressable onPress={() => applyScale(fitScale)}>
+            <ThemedView type="backgroundElement" style={styles.fitBanner}>
+              <ThemedText type="smallBold" style={styles.warnText}>
+                Scale down to {formatNumber(fitScale)}× to fit your pantry
+              </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                Every amount is recalculated so the ratios stay right.
+              </ThemedText>
+            </ThemedView>
+          </Pressable>
+        )}
 
         <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeading}>
           Ingredients
@@ -172,7 +230,9 @@ export default function RecipeDetailScreen() {
         {recipe.ingredients.length > 0 && (
           <Pressable onPress={confirmMade}>
             <ThemedView type="backgroundSelected" style={styles.button}>
-              <ThemedText type="smallBold">I made this</ThemedText>
+              <ThemedText type="smallBold">
+                {scale === 1 ? 'I made this' : `I made this (${formatNumber(scale)}× batch)`}
+              </ThemedText>
             </ThemedView>
           </Pressable>
         )}
@@ -193,6 +253,10 @@ export default function RecipeDetailScreen() {
       </ScrollView>
     </ThemedView>
   );
+}
+
+function formatNumber(value: number): string {
+  return Number(value.toFixed(2)).toString();
 }
 
 function MakeStatus({ check }: { check: RecipeCheck }) {
@@ -289,6 +353,24 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 14,
+  },
+  scaleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 12,
+  },
+  scalePill: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  fitBanner: {
+    marginTop: 8,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    gap: 2,
   },
   okText: {
     color: '#30a46c',
