@@ -5,6 +5,22 @@ import type { RecipeIngredient } from '@/db/recipes';
 
 export type IngredientStatus = 'enough' | 'short' | 'missing';
 
+export type Substitution = {
+  id: number;
+  ingredient: string;
+  substitute: string;
+  ratio: number;
+  notes: string | null;
+};
+
+/** A substitute you actually have enough of on hand. */
+export type SubstituteOption = {
+  substitution: Substitution;
+  item: PantryItem;
+  /** How much of the substitute this recipe would need. */
+  amount: number;
+};
+
 export type IngredientCheck = {
   ingredient: RecipeIngredient;
   /** Pantry item this ingredient was matched to, if any. */
@@ -16,6 +32,8 @@ export type IngredientCheck = {
   available: number;
   /** Largest recipe multiple this ingredient alone supports (Infinity if free). */
   maxScale: number;
+  /** Usable substitutes for the shortfall, best first. */
+  substitutes: SubstituteOption[];
 };
 
 export type RecipeCheck = {
@@ -23,6 +41,10 @@ export type RecipeCheck = {
   canMake: boolean;
   /** Missing or short ingredients — what stands between you and dinner. */
   problems: IngredientCheck[];
+  /** Problems that a substitute in your pantry could cover. */
+  coveredBySubstitute: IngredientCheck[];
+  /** True when every gap has a usable substitute. */
+  canMakeWithSubstitutes: boolean;
   /** Largest scale the whole pantry supports, capped at the requested scale. */
   maxScale: number;
 };
@@ -91,10 +113,45 @@ export function findMatch(ingredient: RecipeIngredient, pantry: PantryItem[]): P
   return best;
 }
 
+/**
+ * Substitutes that cover the shortfall for an ingredient. Only substitutes
+ * you hold enough of are offered — a suggestion you can't act on is noise.
+ */
+export function findSubstitutes(
+  ingredientName: string,
+  shortfall: number,
+  unit: PantryUnit,
+  pantry: PantryItem[],
+  substitutions: Substitution[]
+): SubstituteOption[] {
+  if (shortfall <= 0) return [];
+
+  const options: SubstituteOption[] = [];
+  for (const substitution of substitutions) {
+    if (matchScore(ingredientName, substitution.ingredient) === 0) continue;
+
+    const amount = round(shortfall * substitution.ratio);
+    let best: PantryItem | null = null;
+    let bestScore = 0;
+    for (const item of pantry) {
+      if (item.unit !== unit) continue;
+      if (item.quantity + 1e-9 < amount) continue;
+      const score = matchScore(substitution.substitute, item.name);
+      if (score > bestScore) {
+        best = item;
+        bestScore = score;
+      }
+    }
+    if (best) options.push({ substitution, item: best, amount });
+  }
+  return options;
+}
+
 export function checkIngredients(
   ingredients: RecipeIngredient[],
   pantry: PantryItem[],
-  scale = 1
+  scale = 1,
+  substitutions: Substitution[] = []
 ): RecipeCheck {
   const checks: IngredientCheck[] = ingredients.map((ingredient) => {
     const match = findMatch(ingredient, pantry);
@@ -107,6 +164,11 @@ export function checkIngredients(
     else if (available + 1e-9 >= needed) status = 'enough';
     else status = 'short';
 
+    const substitutes =
+      status === 'enough'
+        ? []
+        : findSubstitutes(ingredient.name, needed - available, ingredient.unit, pantry, substitutions);
+
     return {
       ingredient,
       match,
@@ -114,10 +176,12 @@ export function checkIngredients(
       needed,
       available,
       maxScale: perBatch > 0 ? available / perBatch : Number.POSITIVE_INFINITY,
+      substitutes,
     };
   });
 
   const problems = checks.filter((check) => check.status !== 'enough');
+  const coveredBySubstitute = problems.filter((check) => check.substitutes.length > 0);
   const maxScale = checks.reduce(
     (lowest, check) => Math.min(lowest, check.maxScale),
     Number.POSITIVE_INFINITY
@@ -127,6 +191,9 @@ export function checkIngredients(
     checks,
     canMake: problems.length === 0,
     problems,
+    coveredBySubstitute,
+    canMakeWithSubstitutes:
+      problems.length > 0 && coveredBySubstitute.length === problems.length,
     maxScale,
   };
 }

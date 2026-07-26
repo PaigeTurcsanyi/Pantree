@@ -6,7 +6,7 @@ export const DATABASE_NAME = 'pantree.db';
  * Bump this and add a migration step below whenever the schema changes.
  * Existing installs migrate forward from whatever version they're on.
  */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -72,5 +72,56 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     version = 2;
   }
 
+  if (version === 2) {
+    await seedSubstitutions(db);
+    version = 3;
+  }
+
   await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+}
+
+/**
+ * Starter substitution list. `ratio` is how much substitute replaces one
+ * unit of the original, so 1 g butter -> 0.75 g oil.
+ */
+const STARTER_SUBSTITUTIONS: [string, string, number, string][] = [
+  ['butter', 'oil', 0.75, 'Use ¾ as much oil. Best in cakes and quick breads.'],
+  ['oil', 'butter', 1.25, 'Melt the butter first.'],
+  ['butter', 'margarine', 1, 'Swaps one-for-one.'],
+  ['buttermilk', 'milk', 1, 'Add 1 tbsp lemon juice or vinegar per cup and rest 5 min.'],
+  ['buttermilk', 'yogurt', 1, 'Thin plain yogurt with a splash of milk.'],
+  ['milk', 'water', 1, 'Works in a pinch; the result is less rich.'],
+  ['heavy cream', 'milk', 1, 'Add 2 tbsp melted butter per cup for richness.'],
+  ['sour cream', 'yogurt', 1, 'Plain Greek yogurt is the closest match.'],
+  ['egg', 'flax seed', 7, 'Flax egg: 7 g ground flax + 45 ml water per egg, rest 5 min.'],
+  ['egg', 'apple sauce', 60, 'About 60 g apple sauce per egg. Best in sweet bakes.'],
+  ['white sugar', 'brown sugar', 1, 'Swaps one-for-one; adds a light molasses note.'],
+  ['brown sugar', 'white sugar', 1, 'Add 1 tsp molasses per 100 g if you have it.'],
+  ['honey', 'maple syrup', 1, 'Swaps one-for-one.'],
+  ['maple syrup', 'honey', 1, 'Swaps one-for-one.'],
+  ['all-purpose flour', 'bread flour', 1, 'Slightly chewier result.'],
+  ['bread flour', 'all-purpose flour', 1, 'Slightly softer result.'],
+  ['baking powder', 'baking soda', 0.25, 'Use ¼ as much soda plus an acid like lemon juice.'],
+  ['cornstarch', 'flour', 2, 'Use twice as much flour to thicken.'],
+  ['lemon juice', 'vinegar', 1, 'White or cider vinegar works for acidity.'],
+  ['vinegar', 'lemon juice', 1, 'Swaps one-for-one for acidity.'],
+  ['garlic', 'garlic powder', 0.25, 'About ⅛ tsp powder per clove.'],
+  ['onion', 'onion powder', 0.1, 'Use sparingly; powder is much stronger.'],
+];
+
+async function seedSubstitutions(db: SQLiteDatabase) {
+  const existing = await db.getFirstAsync<{ count: number }>(
+    'SELECT COUNT(*) AS count FROM substitutions'
+  );
+  if ((existing?.count ?? 0) > 0) return;
+
+  for (const [ingredient, substitute, ratio, notes] of STARTER_SUBSTITUTIONS) {
+    await db.runAsync(
+      'INSERT INTO substitutions (ingredient, substitute, ratio, notes) VALUES (?, ?, ?, ?)',
+      ingredient,
+      substitute,
+      ratio,
+      notes
+    );
+  }
 }

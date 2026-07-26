@@ -8,6 +8,7 @@ import { ThemedView } from '@/components/themed-view';
 import { checkIngredients, deductRecipe, IngredientCheck, RecipeCheck } from '@/db/cooking';
 import { formatQuantity, listPantryItems } from '@/db/pantry';
 import { deleteRecipe, getRecipe, RecipeWithIngredients } from '@/db/recipes';
+import { listSubstitutions } from '@/db/substitutions';
 
 export default function RecipeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -23,8 +24,11 @@ export default function RecipeDetailScreen() {
     const found = await getRecipe(db, recipeId);
     setRecipe(found);
     if (found) {
-      const pantry = await listPantryItems(db);
-      setCheck(checkIngredients(found.ingredients, pantry));
+      const [pantry, substitutions] = await Promise.all([
+        listPantryItems(db),
+        listSubstitutions(db),
+      ]);
+      setCheck(checkIngredients(found.ingredients, pantry, 1, substitutions));
     }
     setLoaded(true);
   }, [db, recipeId]);
@@ -212,33 +216,54 @@ function MakeStatus({ check }: { check: RecipeCheck }) {
         {missing.length > 0 && short.length > 0 && ' · '}
         {short.length > 0 && `Short on ${short.map((p) => p.ingredient.name).join(', ')}`}
       </ThemedText>
+      {check.canMakeWithSubstitutes && (
+        <ThemedText type="small" themeColor="textSecondary">
+          You can still make this using the swaps below.
+        </ThemedText>
+      )}
     </ThemedView>
   );
 }
 
 function IngredientRow({ check }: { check: IngredientCheck }) {
-  const { ingredient, match, status, needed, available } = check;
+  const { ingredient, match, status, needed, available, substitutes } = check;
   const color = status === 'enough' ? undefined : status === 'short' ? '#f5a524' : '#e5484d';
+  const swap = substitutes[0];
 
   return (
-    <ThemedView type="backgroundElement" style={styles.ingredientRow}>
-      <ThemedView type="backgroundElement" style={styles.ingredientText}>
-        <ThemedText>{ingredient.name}</ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          {status === 'missing'
-            ? 'not in pantry'
-            : status === 'short'
-              ? `only ${formatQuantity(available, ingredient.unit)} left`
-              : `${formatQuantity(available, ingredient.unit)} in pantry${
-                  match && match.name.toLowerCase() !== ingredient.name.toLowerCase()
-                    ? ` (${match.name})`
-                    : ''
-                }`}
+    <ThemedView type="backgroundElement" style={styles.ingredientBlock}>
+      <ThemedView type="backgroundElement" style={styles.ingredientRow}>
+        <ThemedView type="backgroundElement" style={styles.ingredientText}>
+          <ThemedText>{ingredient.name}</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            {status === 'missing'
+              ? 'not in pantry'
+              : status === 'short'
+                ? `only ${formatQuantity(available, ingredient.unit)} left`
+                : `${formatQuantity(available, ingredient.unit)} in pantry${
+                    match && match.name.toLowerCase() !== ingredient.name.toLowerCase()
+                      ? ` (${match.name})`
+                      : ''
+                  }`}
+          </ThemedText>
+        </ThemedView>
+        <ThemedText type="smallBold" style={color ? { color } : undefined}>
+          {formatQuantity(needed, ingredient.unit)}
         </ThemedText>
       </ThemedView>
-      <ThemedText type="smallBold" style={color ? { color } : undefined}>
-        {formatQuantity(needed, ingredient.unit)}
-      </ThemedText>
+
+      {swap && (
+        <ThemedView type="backgroundElement" style={styles.substitute}>
+          <ThemedText type="small" style={styles.substituteText}>
+            Swap: {formatQuantity(swap.amount, ingredient.unit)} {swap.item.name}
+          </ThemedText>
+          {swap.substitution.notes ? (
+            <ThemedText type="small" themeColor="textSecondary">
+              {swap.substitution.notes}
+            </ThemedText>
+          ) : null}
+        </ThemedView>
+      )}
     </ThemedView>
   );
 }
@@ -276,11 +301,23 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 10,
   },
+  ingredientBlock: {
+    gap: 6,
+  },
   ingredientRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 12,
+  },
+  substitute: {
+    borderLeftWidth: 2,
+    borderLeftColor: '#f5a524',
+    paddingLeft: 10,
+    gap: 1,
+  },
+  substituteText: {
+    color: '#f5a524',
   },
   ingredientText: {
     flex: 1,
