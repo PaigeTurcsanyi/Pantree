@@ -1,12 +1,15 @@
+import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
 
+import { OffProduct, searchProducts } from '@/api/openfoodfacts';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
   deletePantryItem,
+  formatQuantity,
   getPantryItem,
   insertPantryItem,
   PANTRY_UNITS,
@@ -29,7 +32,13 @@ export default function ItemScreen() {
   const [quantity, setQuantity] = useState('');
   const [unit, setUnit] = useState<PantryUnit>('g');
   const [category, setCategory] = useState('');
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [offId, setOffId] = useState<string | null>(null);
   const [error, setError] = useState('');
+
+  const [searching, setSearching] = useState(false);
+  const [results, setResults] = useState<OffProduct[] | null>(null);
+  const [searchError, setSearchError] = useState('');
 
   useEffect(() => {
     if (itemId === null) return;
@@ -40,6 +49,8 @@ export default function ItemScreen() {
       setQuantity(String(item.quantity));
       setUnit(item.unit);
       setCategory(item.category ?? '');
+      setPhotoUrl(item.photo_url);
+      setOffId(item.off_id);
     });
   }, [db, itemId]);
 
@@ -53,7 +64,15 @@ export default function ItemScreen() {
       setError('Enter a quantity of 0 or more.');
       return;
     }
-    const input = { name, brand, quantity: parsedQuantity, unit, category };
+    const input = {
+      name,
+      brand,
+      quantity: parsedQuantity,
+      unit,
+      category,
+      photo_url: photoUrl,
+      off_id: offId,
+    };
     if (itemId === null) {
       await insertPantryItem(db, input);
     } else {
@@ -76,6 +95,39 @@ export default function ItemScreen() {
         { text: 'Delete', style: 'destructive', onPress: () => void doDelete() },
       ]);
     }
+  };
+
+  const findProduct = async () => {
+    if (!name.trim()) {
+      setError('Enter a name first, then search.');
+      return;
+    }
+    setError('');
+    setSearchError('');
+    setSearching(true);
+    setResults(null);
+    try {
+      const found = await searchProducts(`${name} ${brand}`.trim());
+      setResults(found);
+      if (found.length === 0) {
+        setSearchError('No matches found. The item saves fine without a photo.');
+      }
+    } catch {
+      setSearchError('Couldn’t reach Open Food Facts. Check your connection and try again.');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const applyProduct = (product: OffProduct) => {
+    setPhotoUrl(product.imageUrl);
+    setOffId(product.code);
+    if (!brand.trim() && product.brand) setBrand(product.brand);
+    if (product.packageQuantity && product.packageUnit && !Number(quantity.replace(',', '.'))) {
+      setQuantity(String(product.packageQuantity));
+      setUnit(product.packageUnit);
+    }
+    setResults(null);
   };
 
   const inputStyle = [styles.input, { backgroundColor: theme.backgroundElement, color: theme.text }];
@@ -106,6 +158,76 @@ export default function ItemScreen() {
           style={inputStyle}
         />
 
+        <ThemedView style={styles.photoRow}>
+          {photoUrl ? (
+            <>
+              <Image source={photoUrl} style={styles.photo} contentFit="contain" transition={150} />
+              <Pressable onPress={() => { setPhotoUrl(null); setOffId(null); }}>
+                <ThemedView type="backgroundElement" style={styles.smallButton}>
+                  <ThemedText type="small">Remove photo</ThemedText>
+                </ThemedView>
+              </Pressable>
+            </>
+          ) : (
+            <Pressable onPress={findProduct} disabled={searching}>
+              <ThemedView type="backgroundElement" style={styles.smallButton}>
+                <ThemedText type="smallBold">
+                  {searching ? 'Searching…' : 'Find photo & size'}
+                </ThemedText>
+              </ThemedView>
+            </Pressable>
+          )}
+        </ThemedView>
+
+        {searchError ? (
+          <ThemedText type="small" themeColor="textSecondary">
+            {searchError}
+          </ThemedText>
+        ) : null}
+
+        {results && results.length > 0 && (
+          <ThemedView style={styles.results}>
+            <ThemedText type="smallBold" themeColor="textSecondary">
+              Pick a match from Open Food Facts
+            </ThemedText>
+            {results.map((product) => (
+              <Pressable key={product.code} onPress={() => applyProduct(product)}>
+                {({ pressed }) => (
+                  <ThemedView
+                    type={pressed ? 'backgroundSelected' : 'backgroundElement'}
+                    style={styles.resultRow}>
+                    {product.imageSmallUrl ? (
+                      <Image
+                        source={product.imageSmallUrl}
+                        style={styles.resultImage}
+                        contentFit="contain"
+                        transition={150}
+                      />
+                    ) : (
+                      <ThemedView type="backgroundSelected" style={styles.resultImage} />
+                    )}
+                    <ThemedView
+                      type={pressed ? 'backgroundSelected' : 'backgroundElement'}
+                      style={styles.resultText}>
+                      <ThemedText type="small" numberOfLines={1}>
+                        {product.name}
+                      </ThemedText>
+                      <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                        {[product.brand, product.sizeLabel].filter(Boolean).join(' · ') || '—'}
+                      </ThemedText>
+                    </ThemedView>
+                  </ThemedView>
+                )}
+              </Pressable>
+            ))}
+            <Pressable onPress={() => setResults(null)}>
+              <ThemedText type="small" themeColor="textSecondary" style={styles.dismiss}>
+                None of these
+              </ThemedText>
+            </Pressable>
+          </ThemedView>
+        )}
+
         <ThemedText type="smallBold" themeColor="textSecondary">
           Quantity
         </ThemedText>
@@ -132,6 +254,9 @@ export default function ItemScreen() {
         </ThemedView>
         <ThemedText type="small" themeColor="textSecondary">
           g for solids by weight, ml for liquids, each for countable things (eggs, cans).
+          {quantity && !Number.isNaN(Number(quantity.replace(',', '.'))) && unit !== 'each'
+            ? ` Shown as ${formatQuantity(Number(quantity.replace(',', '.')), unit)}.`
+            : ''}
         </ThemedText>
 
         <ThemedText type="smallBold" themeColor="textSecondary">
@@ -184,6 +309,44 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 14,
     fontSize: 16,
+  },
+  photoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  photo: {
+    width: 64,
+    height: 64,
+    borderRadius: 10,
+  },
+  smallButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+  },
+  results: {
+    gap: 6,
+  },
+  resultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 10,
+    padding: 8,
+  },
+  resultImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 6,
+  },
+  resultText: {
+    flex: 1,
+    gap: 1,
+  },
+  dismiss: {
+    textAlign: 'center',
+    paddingVertical: 6,
   },
   quantityRow: {
     flexDirection: 'row',

@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useState } from 'react';
@@ -61,6 +62,20 @@ export default function PantryScreen() {
               <ThemedView
                 type={pressed ? 'backgroundSelected' : 'backgroundElement'}
                 style={styles.row}>
+                {item.photo_url ? (
+                  <Image
+                    source={item.photo_url}
+                    style={styles.thumbnail}
+                    contentFit="contain"
+                    transition={150}
+                  />
+                ) : (
+                  <ThemedView type="backgroundSelected" style={styles.thumbnail}>
+                    <ThemedText type="smallBold" themeColor="textSecondary">
+                      {item.name.slice(0, 1).toUpperCase()}
+                    </ThemedText>
+                  </ThemedView>
+                )}
                 <ThemedView
                   type={pressed ? 'backgroundSelected' : 'backgroundElement'}
                   style={styles.rowText}>
@@ -139,5 +154,12 @@ const styles = StyleSheet.create({
   rowText: {
     flex: 1,
     gap: 2,
+  },
+  thumbnail: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

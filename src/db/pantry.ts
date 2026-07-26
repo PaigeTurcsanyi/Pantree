@@ -23,6 +23,8 @@ export type PantryItemInput = {
   quantity: number;
   unit: PantryUnit;
   category?: string | null;
+  photo_url?: string | null;
+  off_id?: string | null;
 };
 
 export async function listPantryItems(db: SQLiteDatabase, search = ''): Promise<PantryItem[]> {
@@ -46,13 +48,15 @@ export async function getPantryItem(db: SQLiteDatabase, id: number): Promise<Pan
 
 export async function insertPantryItem(db: SQLiteDatabase, item: PantryItemInput): Promise<number> {
   const result = await db.runAsync(
-    `INSERT INTO pantry_items (name, brand, quantity, unit, category)
-     VALUES (?, ?, ?, ?, ?)`,
+    `INSERT INTO pantry_items (name, brand, quantity, unit, category, photo_url, off_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     item.name.trim(),
     item.brand?.trim() || null,
     item.quantity,
     item.unit,
-    item.category?.trim() || null
+    item.category?.trim() || null,
+    item.photo_url || null,
+    item.off_id || null
   );
   return result.lastInsertRowId;
 }
@@ -64,13 +68,16 @@ export async function updatePantryItem(
 ): Promise<void> {
   await db.runAsync(
     `UPDATE pantry_items
-     SET name = ?, brand = ?, quantity = ?, unit = ?, category = ?, updated_at = datetime('now')
+     SET name = ?, brand = ?, quantity = ?, unit = ?, category = ?,
+         photo_url = ?, off_id = ?, updated_at = datetime('now')
      WHERE id = ?`,
     item.name.trim(),
     item.brand?.trim() || null,
     item.quantity,
     item.unit,
     item.category?.trim() || null,
+    item.photo_url || null,
+    item.off_id || null,
     id
   );
 }
