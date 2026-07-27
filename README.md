@@ -3,6 +3,7 @@
 A local-first pantry & recipe app for iPad/iPhone. Paste screenshots of grocery
 orders to build a digital pantry, add recipes, and track what you can cook.
 Full product spec: [pantry-app-spec.md](./pantry-app-spec.md).
+Coming soon to the app store
 
 ## Stack
 

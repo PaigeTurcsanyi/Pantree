@@ -1,10 +1,10 @@
-# Pantree — App Specification
+f# Pantree — App Specification
 
 > A hand-off spec for building a mobile pantry & recipe app. Give this file to
 > Claude Code (drop it in an empty project folder and say "read spec.md and
 > let's start building"). It describes **what** to build and **why**, not every
 > line of code — build it in the phases at the bottom, one at a time, checking in
-> after each.
+> after each. 
 
 ---
 
