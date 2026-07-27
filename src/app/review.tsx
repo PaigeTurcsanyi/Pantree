@@ -32,6 +32,7 @@ export default function ReviewScreen() {
   );
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [progress, setProgress] = useState('');
 
   const update = (index: number, patch: Partial<EditableItem>) => {
     setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
@@ -66,16 +67,21 @@ export default function ReviewScreen() {
         });
         inserted.push({ id, name: item.name, brand: item.brand });
       }
-      void enrichInBackground(inserted);
-      router.back();
+      // Enrich before leaving. Firing this off as the screen unmounted meant
+      // failures were invisible and photos arrived (or didn't) unannounced.
+      await enrichItems(inserted);
+      if (router.canGoBack()) router.back();
+      else router.replace('/');
     } finally {
       setSaving(false);
+      setProgress('');
     }
   };
 
-  /** Best-effort photo and nutrition enrichment; failures are silent by design. */
-  const enrichInBackground = async (rows: { id: number; name: string; brand: string }[]) => {
-    for (const row of rows) {
+  /** Photo and nutrition lookup. A miss on one item never blocks the rest. */
+  const enrichItems = async (rows: { id: number; name: string; brand: string }[]) => {
+    for (const [index, row] of rows.entries()) {
+      setProgress(`Finding photos… ${index + 1} of ${rows.length}`);
       try {
         const results = await searchProducts(row.name, row.brand);
         const match = results.find((r) => r.imageUrl) ?? results.find((r) => r.nutrition);
@@ -95,7 +101,7 @@ export default function ReviewScreen() {
           nutrition: match.nutrition,
         });
       } catch {
-        // enrichment is a bonus, not a blocker
+        // Enrichment is a bonus; the item is already saved either way.
       }
     }
   };
@@ -171,7 +177,7 @@ export default function ReviewScreen() {
             <ThemedView type="backgroundSelected" style={styles.confirmButton}>
               <ThemedText type="smallBold">
                 {saving
-                  ? 'Saving…'
+                  ? progress || 'Saving…'
                   : `Add ${items.length} item${items.length === 1 ? '' : 's'} to pantry`}
               </ThemedText>
             </ThemedView>
