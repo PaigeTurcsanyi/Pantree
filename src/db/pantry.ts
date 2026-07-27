@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { Nutrition } from '@/api/openfoodfacts';
+import { matchScore, NAME_CONTAINMENT_SCORE } from '@/lib/name-match';
 
 export type PantryUnit = 'g' | 'ml' | 'each';
 
@@ -45,6 +46,36 @@ export async function listPantryItems(db: SQLiteDatabase, search = ''): Promise<
     );
   }
   return db.getAllAsync<PantryItem>('SELECT * FROM pantry_items ORDER BY name COLLATE NOCASE');
+}
+
+/**
+ * An existing item that means the same food, so a repeat purchase tops up
+ * what's already there instead of creating a second card. Brand is ignored
+ * on purpose — raspberries are raspberries. Units must agree, since adding
+ * 500 g to 2 L is meaningless.
+ */
+export async function findSimilarItem(
+  db: SQLiteDatabase,
+  name: string,
+  unit: PantryUnit,
+  excludeId?: number
+): Promise<PantryItem | null> {
+  const candidates = await db.getAllAsync<PantryItem>(
+    'SELECT * FROM pantry_items WHERE unit = ?',
+    unit
+  );
+
+  let best: PantryItem | null = null;
+  let bestScore = 0;
+  for (const item of candidates) {
+    if (item.id === excludeId) continue;
+    const score = matchScore(name, item.name);
+    if (score >= NAME_CONTAINMENT_SCORE && score > bestScore) {
+      best = item;
+      bestScore = score;
+    }
+  }
+  return best;
 }
 
 /** Items that never got a product match — the backfill targets these. */
@@ -92,6 +123,19 @@ export async function updatePantryItem(
     item.photo_url || null,
     item.off_id || null,
     item.nutrition ? JSON.stringify(item.nutrition) : null,
+    id
+  );
+}
+
+/** Tops up an existing item, leaving its photo, brand and nutrition alone. */
+export async function addToPantryItem(
+  db: SQLiteDatabase,
+  id: number,
+  amount: number
+): Promise<void> {
+  await db.runAsync(
+    `UPDATE pantry_items SET quantity = quantity + ?, updated_at = datetime('now') WHERE id = ?`,
+    amount,
     id
   );
 }

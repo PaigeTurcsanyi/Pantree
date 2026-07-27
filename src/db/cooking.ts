@@ -2,6 +2,9 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { PantryItem, PantryUnit } from '@/db/pantry';
 import type { RecipeIngredient } from '@/db/recipes';
+import { matchScore, NAME_CONTAINMENT_SCORE } from '@/lib/name-match';
+
+export { matchScore, NAME_CONTAINMENT_SCORE };
 
 export type IngredientStatus = 'enough' | 'short' | 'missing';
 
@@ -55,51 +58,6 @@ export type RecipeCheck = {
  */
 function unitsCompatible(a: PantryUnit, b: PantryUnit): boolean {
   return a === b;
-}
-
-/** Loose name matching: "All-purpose flour" in the pantry covers "flour" in a recipe. */
-function normalizeName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function singularize(word: string): string {
-  if (word.endsWith('ies') && word.length > 4) return `${word.slice(0, -3)}y`;
-  if (word.endsWith('es') && word.length > 3) return word.slice(0, -2);
-  if (word.endsWith('s') && !word.endsWith('ss') && word.length > 3) return word.slice(0, -1);
-  return word;
-}
-
-function nameTokens(name: string): string[] {
-  return normalizeName(name).split(' ').filter(Boolean).map(singularize);
-}
-
-/** Score floor meaning "one name contains the other", not just shared words. */
-export const NAME_CONTAINMENT_SCORE = 500;
-
-/**
- * Score how well a pantry item matches an ingredient name.
- * 0 means no match; higher is better.
- */
-export function matchScore(ingredientName: string, pantryName: string): number {
-  const a = nameTokens(ingredientName);
-  const b = nameTokens(pantryName);
-  if (a.length === 0 || b.length === 0) return 0;
-
-  const aSet = new Set(a);
-  const bSet = new Set(b);
-  const shared = [...aSet].filter((token) => bSet.has(token));
-  if (shared.length === 0) return 0;
-
-  const joinedA = a.join(' ');
-  const joinedB = b.join(' ');
-  if (joinedA === joinedB) return 1000;
-  if (joinedB.includes(joinedA) || joinedA.includes(joinedB)) return 500 + shared.length;
-  // Partial overlap: prefer matches that cover more of the ingredient name.
-  return Math.round((shared.length / aSet.size) * 100) + shared.length;
 }
 
 export function findMatch(ingredient: RecipeIngredient, pantry: PantryItem[]): PantryItem | null {

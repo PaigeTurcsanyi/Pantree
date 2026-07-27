@@ -1,13 +1,22 @@
 import { Stack, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
 
 import { searchProducts } from '@/api/openfoodfacts';
 import type { ReviewItem } from '@/api/vision';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { insertPantryItem, PANTRY_UNITS, PantryUnit, updatePantryItem } from '@/db/pantry';
+import {
+  addToPantryItem,
+  findSimilarItem,
+  formatQuantity,
+  insertPantryItem,
+  PANTRY_UNITS,
+  PantryItem,
+  PantryUnit,
+  updatePantryItem,
+} from '@/db/pantry';
 import { useTheme } from '@/hooks/use-theme';
 import { takeImportDraft } from '@/state/import-draft';
 
@@ -17,6 +26,9 @@ type EditableItem = {
   quantity: string;
   unit: PantryUnit;
 };
+
+/** Pantry item each row will top up, keyed by row index. */
+type Duplicates = Record<number, PantryItem>;
 
 export default function ReviewScreen() {
   const db = useSQLiteContext();
@@ -33,6 +45,25 @@ export default function ReviewScreen() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [progress, setProgress] = useState('');
+  const [duplicates, setDuplicates] = useState<Duplicates>({});
+
+  // Flag rows that will top up something already in the pantry, so merging
+  // is visible before you commit rather than a surprise afterwards.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const found: Duplicates = {};
+      for (const [index, item] of items.entries()) {
+        if (!item.name.trim()) continue;
+        const existing = await findSimilarItem(db, item.name, item.unit);
+        if (existing) found[index] = existing;
+      }
+      if (!cancelled) setDuplicates(found);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [db, items]);
 
   const update = (index: number, patch: Partial<EditableItem>) => {
     setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
@@ -59,10 +90,21 @@ export default function ReviewScreen() {
     try {
       const inserted: { id: number; name: string; brand: string }[] = [];
       for (const item of items) {
+        const amount = Number(item.quantity.replace(',', '.'));
+        // Buying something again tops up what's there rather than adding a
+        // second card for the same food.
+        const existing = await findSimilarItem(db, item.name, item.unit);
+        if (existing) {
+          await addToPantryItem(db, existing.id, amount);
+          if (!existing.photo_url) {
+            inserted.push({ id: existing.id, name: existing.name, brand: existing.brand ?? '' });
+          }
+          continue;
+        }
         const id = await insertPantryItem(db, {
           name: item.name,
           brand: item.brand || null,
-          quantity: Number(item.quantity.replace(',', '.')),
+          quantity: amount,
           unit: item.unit,
         });
         inserted.push({ id, name: item.name, brand: item.brand });
@@ -158,6 +200,12 @@ export default function ReviewScreen() {
                 </Pressable>
               ))}
             </ThemedView>
+            {duplicates[index] && (
+              <ThemedText type="small" style={styles.mergeNote}>
+                Tops up “{duplicates[index].name}” — already have{' '}
+                {formatQuantity(duplicates[index].quantity, duplicates[index].unit)}
+              </ThemedText>
+            )}
             <Pressable onPress={() => remove(index)}>
               <ThemedText type="small" style={styles.removeText}>
                 Remove
@@ -225,6 +273,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 8,
+  },
+  mergeNote: {
+    color: '#f5a524',
   },
   removeText: {
     color: '#e5484d',
