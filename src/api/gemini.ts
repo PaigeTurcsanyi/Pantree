@@ -29,7 +29,80 @@ const RESPONSE_SCHEMA = {
   },
 };
 
-export const parseGroceryScreenshot: VisionParser = async (imageBase64, mimeType, apiKey) => {
+const RECIPE_PROMPT = `This image is a recipe — a screenshot, a photo of a cookbook page, or a handwritten card.
+
+Return one JSON object describing it:
+- title: the recipe's name
+- servings: how many it serves, as a number, or null if not stated
+- ingredients: each ingredient with name, amount and unit. Convert everything to grams, millilitres, or whole units so it can be subtracted from a pantry: 1 cup flour is roughly 120 g, 1 cup liquid is 240 ml, 1 tbsp is 15 ml, 1 tsp is 5 ml, 1 stick of butter is 113 g. Count eggs and whole items with unit "each". Strip brands from ingredient names.
+- steps: the method as an ordered list of strings, one instruction per entry. Drop step numbers from the text itself.
+
+If a quantity is vague ("a pinch", "to taste"), use a small sensible amount rather than null.`;
+
+const RECIPE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    title: { type: 'STRING' },
+    servings: { type: 'NUMBER', nullable: true },
+    ingredients: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          name: { type: 'STRING' },
+          amount: { type: 'NUMBER' },
+          unit: { type: 'STRING', enum: ['g', 'ml', 'each'] },
+        },
+        required: ['name', 'amount', 'unit'],
+      },
+    },
+    steps: { type: 'ARRAY', items: { type: 'STRING' } },
+  },
+  required: ['title', 'ingredients', 'steps'],
+};
+
+export type ParsedRecipe = {
+  title: string;
+  servings: number | null;
+  ingredients: { name: string; amount: number; unit: 'g' | 'ml' | 'each' }[];
+  steps: string[];
+};
+
+export async function parseRecipeScreenshot(
+  imageBase64: string,
+  mimeType: string,
+  apiKey: string
+): Promise<ParsedRecipe> {
+  const text = await callGemini(imageBase64, mimeType, apiKey, RECIPE_PROMPT, RECIPE_SCHEMA);
+
+  let parsed: ParsedRecipe;
+  try {
+    parsed = JSON.parse(text) as ParsedRecipe;
+  } catch {
+    throw new Error('Gemini returned malformed data. Try again.');
+  }
+  if (!parsed?.title?.trim()) {
+    throw new Error('That didn’t look like a recipe. Try a clearer screenshot.');
+  }
+
+  return {
+    title: parsed.title.trim(),
+    servings: typeof parsed.servings === 'number' ? parsed.servings : null,
+    ingredients: (parsed.ingredients ?? []).filter(
+      (i) => i?.name?.trim() && typeof i.amount === 'number' && i.amount > 0
+    ),
+    steps: (parsed.steps ?? []).filter((s) => typeof s === 'string' && s.trim()),
+  };
+}
+
+/** One image + prompt + response schema in, raw JSON text out. */
+async function callGemini(
+  imageBase64: string,
+  mimeType: string,
+  apiKey: string,
+  prompt: string,
+  schema: object
+): Promise<string> {
   const response = await fetch(ENDPOINT, {
     method: 'POST',
     headers: {
@@ -38,16 +111,11 @@ export const parseGroceryScreenshot: VisionParser = async (imageBase64, mimeType
     },
     body: JSON.stringify({
       contents: [
-        {
-          parts: [
-            { inline_data: { mime_type: mimeType, data: imageBase64 } },
-            { text: PROMPT },
-          ],
-        },
+        { parts: [{ inline_data: { mime_type: mimeType, data: imageBase64 } }, { text: prompt }] },
       ],
       generationConfig: {
         responseMimeType: 'application/json',
-        responseSchema: RESPONSE_SCHEMA,
+        responseSchema: schema,
       },
     }),
   });
@@ -69,6 +137,11 @@ export const parseGroceryScreenshot: VisionParser = async (imageBase64, mimeType
   if (!text) {
     throw new Error('Gemini returned no result. Try a clearer screenshot.');
   }
+  return text;
+}
+
+export const parseGroceryScreenshot: VisionParser = async (imageBase64, mimeType, apiKey) => {
+  const text = await callGemini(imageBase64, mimeType, apiKey, PROMPT, RESPONSE_SCHEMA);
 
   let parsed: unknown;
   try {

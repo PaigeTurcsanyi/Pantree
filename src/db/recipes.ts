@@ -12,6 +12,7 @@ export type Recipe = {
   /** Stored as a JSON array of strings in SQLite. */
   steps: string;
   notes: string | null;
+  photo_url: string | null;
 };
 
 export type RecipeIngredient = {
@@ -40,6 +41,7 @@ export type RecipeInput = {
   steps: string[];
   notes?: string | null;
   source?: RecipeSource;
+  photo_url?: string | null;
   ingredients: RecipeIngredientInput[];
 };
 
@@ -71,12 +73,13 @@ export async function insertRecipe(db: SQLiteDatabase, input: RecipeInput): Prom
   let recipeId = 0;
   await db.withTransactionAsync(async () => {
     const result = await db.runAsync(
-      'INSERT INTO recipes (title, source, servings, steps, notes) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO recipes (title, source, servings, steps, notes, photo_url) VALUES (?, ?, ?, ?, ?, ?)',
       input.title.trim(),
       input.source ?? 'typed',
       input.servings,
       JSON.stringify(input.steps),
-      input.notes?.trim() || null
+      input.notes?.trim() || null,
+      input.photo_url || null
     );
     recipeId = result.lastInsertRowId;
     await insertIngredients(db, recipeId, input.ingredients);
@@ -91,11 +94,12 @@ export async function updateRecipe(
 ): Promise<void> {
   await db.withTransactionAsync(async () => {
     await db.runAsync(
-      'UPDATE recipes SET title = ?, servings = ?, steps = ?, notes = ? WHERE id = ?',
+      'UPDATE recipes SET title = ?, servings = ?, steps = ?, notes = ?, photo_url = ? WHERE id = ?',
       input.title.trim(),
       input.servings,
       JSON.stringify(input.steps),
       input.notes?.trim() || null,
+      input.photo_url || null,
       id
     );
     await db.runAsync('DELETE FROM recipe_ingredients WHERE recipe_id = ?', id);

@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
@@ -116,6 +117,10 @@ export default function RecipeDetailScreen() {
     <ThemedView style={styles.container}>
       <Stack.Screen options={{ title: recipe.title }} />
       <ScrollView contentContainerStyle={styles.content}>
+        {recipe.photo_url ? (
+          <Image source={recipe.photo_url} style={styles.hero} contentFit="cover" transition={150} />
+        ) : null}
+
         <ThemedText type="subtitle">{recipe.title}</ThemedText>
         {recipe.servings ? (
           <ThemedText type="small" themeColor="textSecondary">
@@ -348,6 +353,12 @@ const styles = StyleSheet.create({
   missing: {
     textAlign: 'center',
     padding: 40,
+  },
+  hero: {
+    width: '100%',
+    height: 180,
+    borderRadius: 14,
+    marginBottom: 4,
   },
   sectionHeading: {
     marginTop: 16,

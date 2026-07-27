@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useState } from 'react';
@@ -58,12 +59,24 @@ export default function RecipesScreen() {
               <ThemedView
                 type={pressed ? 'backgroundSelected' : 'backgroundElement'}
                 style={styles.row}>
-                <ThemedText>{item.title}</ThemedText>
-                {item.servings ? (
-                  <ThemedText type="small" themeColor="textSecondary">
-                    Serves {item.servings}
-                  </ThemedText>
+                {item.photo_url ? (
+                  <Image
+                    source={item.photo_url}
+                    style={styles.thumbnail}
+                    contentFit="cover"
+                    transition={150}
+                  />
                 ) : null}
+                <ThemedView
+                  type={pressed ? 'backgroundSelected' : 'backgroundElement'}
+                  style={styles.rowText}>
+                  <ThemedText>{item.title}</ThemedText>
+                  {item.servings ? (
+                    <ThemedText type="small" themeColor="textSecondary">
+                      Serves {item.servings}
+                    </ThemedText>
+                  ) : null}
+                </ThemedView>
               </ThemedView>
             )}
           </Pressable>
@@ -117,9 +130,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   row: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 14,
+    gap: 12,
+  },
+  rowText: {
+    flex: 1,
     gap: 2,
+  },
+  thumbnail: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
   },
 });

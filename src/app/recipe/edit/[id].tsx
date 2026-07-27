@@ -1,12 +1,16 @@
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
 
+import { parseRecipeScreenshot } from '@/api/gemini';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PANTRY_UNITS, PantryUnit } from '@/db/pantry';
 import { getRecipe, insertRecipe, updateRecipe } from '@/db/recipes';
+import { getGeminiApiKey } from '@/db/settings';
 import { useTheme } from '@/hooks/use-theme';
 
 type IngredientDraft = {
@@ -31,7 +35,9 @@ export default function RecipeEditScreen() {
   const [ingredients, setIngredients] = useState<IngredientDraft[]>([emptyIngredient()]);
   const [steps, setSteps] = useState<string[]>(['']);
   const [notes, setNotes] = useState('');
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [reading, setReading] = useState(false);
 
   useEffect(() => {
     if (recipeId === null) return;
@@ -40,6 +46,7 @@ export default function RecipeEditScreen() {
       setTitle(recipe.title);
       setServings(recipe.servings ? String(recipe.servings) : '');
       setNotes(recipe.notes ?? '');
+      setPhotoUrl(recipe.photo_url);
       setSteps(recipe.steps.length ? recipe.steps : ['']);
       setIngredients(
         recipe.ingredients.length
@@ -52,6 +59,63 @@ export default function RecipeEditScreen() {
       );
     });
   }, [db, recipeId]);
+
+  /** Reads a recipe out of a screenshot and fills the form with it. */
+  const importFromScreenshot = async () => {
+    setError('');
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+      base64: true,
+    });
+    if (picked.canceled) return;
+    const asset = picked.assets[0];
+    if (!asset.base64) {
+      setError('Couldn’t read that image. Try another one.');
+      return;
+    }
+
+    setReading(true);
+    try {
+      const apiKey = await getGeminiApiKey(db);
+      if (!apiKey) {
+        setError('No Gemini API key set. Add one in Settings.');
+        return;
+      }
+      const recipe = await parseRecipeScreenshot(
+        asset.base64,
+        asset.mimeType ?? 'image/jpeg',
+        apiKey
+      );
+      setTitle(recipe.title);
+      setServings(recipe.servings ? String(recipe.servings) : '');
+      setIngredients(
+        recipe.ingredients.length
+          ? recipe.ingredients.map((i) => ({
+              name: i.name,
+              amount: String(i.amount),
+              unit: i.unit,
+            }))
+          : [emptyIngredient()]
+      );
+      setSteps(recipe.steps.length ? recipe.steps : ['']);
+      // Keep the screenshot as the recipe's picture unless one is already set.
+      if (!photoUrl) setPhotoUrl(asset.uri);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong. Try again.');
+    } finally {
+      setReading(false);
+    }
+  };
+
+  const pickPhoto = async () => {
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+    });
+    if (picked.canceled) return;
+    setPhotoUrl(picked.assets[0].uri);
+  };
 
   const updateIngredient = (index: number, patch: Partial<IngredientDraft>) => {
     setIngredients((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
@@ -81,6 +145,7 @@ export default function RecipeEditScreen() {
       servings: parsedServings,
       steps: steps.map((step) => step.trim()).filter(Boolean),
       notes,
+      photo_url: photoUrl,
       ingredients: filled.map((ingredient) => ({
         name: ingredient.name,
         amount: Number(ingredient.amount.replace(',', '.')),
@@ -103,6 +168,46 @@ export default function RecipeEditScreen() {
     <ThemedView style={styles.container}>
       <Stack.Screen options={{ title: isNew ? 'New recipe' : 'Edit recipe' }} />
       <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
+        <Pressable onPress={importFromScreenshot} disabled={reading}>
+          <ThemedView type="backgroundElement" style={styles.importButton}>
+            {reading ? (
+              <ActivityIndicator />
+            ) : (
+              <ThemedText type="smallBold">Fill this in from a screenshot</ThemedText>
+            )}
+          </ThemedView>
+        </Pressable>
+        <ThemedText type="small" themeColor="textSecondary">
+          Reads a recipe photo or screenshot and fills in the fields below. You can fix anything
+          before saving.
+        </ThemedText>
+
+        <ThemedView style={styles.photoRow}>
+          {photoUrl ? (
+            <>
+              <Image source={photoUrl} style={styles.photo} contentFit="cover" transition={150} />
+              <Pressable onPress={pickPhoto}>
+                <ThemedView type="backgroundElement" style={styles.smallButton}>
+                  <ThemedText type="small">Change photo</ThemedText>
+                </ThemedView>
+              </Pressable>
+              <Pressable onPress={() => setPhotoUrl(null)}>
+                <ThemedView type="backgroundElement" style={styles.smallButton}>
+                  <ThemedText type="small" style={styles.removeText}>
+                    Remove
+                  </ThemedText>
+                </ThemedView>
+              </Pressable>
+            </>
+          ) : (
+            <Pressable onPress={pickPhoto}>
+              <ThemedView type="backgroundElement" style={styles.smallButton}>
+                <ThemedText type="smallBold">Add a photo</ThemedText>
+              </ThemedView>
+            </Pressable>
+          )}
+        </ThemedView>
+
         <ThemedText type="smallBold" themeColor="textSecondary">
           Title
         </ThemedText>
@@ -282,7 +387,27 @@ const styles = StyleSheet.create({
   smallButton: {
     borderRadius: 10,
     paddingVertical: 10,
+    paddingHorizontal: 14,
     alignItems: 'center',
+  },
+  importButton: {
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  photoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 4,
+  },
+  photo: {
+    width: 72,
+    height: 72,
+    borderRadius: 10,
   },
   stepRow: {
     flexDirection: 'row',

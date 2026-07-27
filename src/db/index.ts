@@ -86,6 +86,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   // migration, a restored database) would otherwise skip them forever,
   // and every INSERT would fail on the missing column.
   await addColumnIfMissing(db, 'pantry_items', 'nutrition', 'TEXT');
+  await addColumnIfMissing(db, 'recipes', 'photo_url', 'TEXT');
 }
 
 async function addColumnIfMissing(
