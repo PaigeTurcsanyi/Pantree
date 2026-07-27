@@ -7,8 +7,8 @@ const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODE
 const PROMPT = `This image is a screenshot of an online grocery order (cart, order confirmation, or receipt).
 
 Extract every distinct product as a JSON array. For each product:
-- name: the product name without the brand (e.g. "All-purpose flour", not "No Name All-purpose flour")
-- brand: the brand if shown, else null
+- name: what the thing actually is, without the brand (e.g. "All-purpose flour", not "No Name All-purpose flour"). Exception: when the brand IS the product's common name, keep it in the name — "Cheez-It", "Nutella", "Oreos", "Goldfish" are what you'd call them, so don't rewrite them as "cheese crackers" or "hazelnut spread".
+- brand: only when the brand identifies a specific distinctive product worth remembering. Use null for plain groceries (produce, milk, eggs, flour) and for supermarket house labels like No Name, Compliments, Great Value, President's Choice, Kirkland, or "<store> Essentials" — for those the item is just what it is.
 - size_value and size_unit: the size of ONE package as printed (e.g. "280 g" -> 280 and "g"; "1.5 L" -> 1.5 and "l"; "12 pack" -> 12 and "each"). Use null for both if no size is shown.
 - count: how many of that package were ordered (default 1)
 

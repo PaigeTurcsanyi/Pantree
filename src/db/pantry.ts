@@ -47,6 +47,13 @@ export async function listPantryItems(db: SQLiteDatabase, search = ''): Promise<
   return db.getAllAsync<PantryItem>('SELECT * FROM pantry_items ORDER BY name COLLATE NOCASE');
 }
 
+/** Items that never got a product match — the backfill targets these. */
+export async function listItemsMissingPhotos(db: SQLiteDatabase): Promise<PantryItem[]> {
+  return db.getAllAsync<PantryItem>(
+    "SELECT * FROM pantry_items WHERE photo_url IS NULL OR photo_url = '' ORDER BY name COLLATE NOCASE"
+  );
+}
+
 export async function getPantryItem(db: SQLiteDatabase, id: number): Promise<PantryItem | null> {
   return db.getFirstAsync<PantryItem>('SELECT * FROM pantry_items WHERE id = ?', id);
 }
