@@ -28,6 +28,7 @@ export type Nutrition = {
   sugars?: number;
   fiber?: number;
   salt?: number;
+  sodium?: number;
 };
 
 export type OffProduct = {
@@ -120,6 +121,7 @@ function toNutrition(raw: Record<string, number | undefined> | undefined): Nutri
     sugars: raw.sugars_100g,
     fiber: raw.fiber_100g,
     salt: raw.salt_100g,
+    sodium: raw.sodium_100g,
   };
 
   // Drop absent values so the UI can tell "no data" from "zero".

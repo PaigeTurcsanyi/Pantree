@@ -2,9 +2,10 @@ import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
 
 import { Nutrition, OffProduct, searchProducts } from '@/api/openfoodfacts';
+import { ConfirmPanel } from '@/components/confirm-panel';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
@@ -37,6 +38,7 @@ export default function ItemScreen() {
   const [offId, setOffId] = useState<string | null>(null);
   const [nutrition, setNutrition] = useState<Nutrition | null>(null);
   const [error, setError] = useState('');
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<OffProduct[] | null>(null);
@@ -82,23 +84,19 @@ export default function ItemScreen() {
     } else {
       await updatePantryItem(db, itemId, input);
     }
-    router.back();
+    leaveScreen();
   };
 
-  const confirmDelete = () => {
+  const doDelete = async () => {
     if (itemId === null) return;
-    const doDelete = async () => {
-      await deletePantryItem(db, itemId);
-      router.back();
-    };
-    if (Platform.OS === 'web') {
-      if (window.confirm(`Delete “${name}” from your pantry?`)) void doDelete();
-    } else {
-      Alert.alert('Delete item', `Delete “${name}” from your pantry?`, [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => void doDelete() },
-      ]);
-    }
+    await deletePantryItem(db, itemId);
+    leaveScreen();
+  };
+
+  /** Opened directly by URL there may be nothing to go back to. */
+  const leaveScreen = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
   };
 
   const findProduct = async () => {
@@ -289,61 +287,102 @@ export default function ItemScreen() {
           </ThemedView>
         </Pressable>
 
-        {!isNew && (
-          <Pressable onPress={confirmDelete}>
-            <ThemedView type="backgroundElement" style={styles.deleteButton}>
-              <ThemedText type="smallBold" style={styles.deleteText}>
-                Delete item
-              </ThemedText>
-            </ThemedView>
-          </Pressable>
-        )}
+        {!isNew &&
+          (confirmingDelete ? (
+            <ConfirmPanel
+              message={`Delete “${name}” from your pantry?`}
+              confirmLabel="Delete"
+              destructive
+              onConfirm={() => void doDelete()}
+              onCancel={() => setConfirmingDelete(false)}
+            />
+          ) : (
+            <Pressable onPress={() => setConfirmingDelete(true)}>
+              <ThemedView type="backgroundElement" style={styles.deleteButton}>
+                <ThemedText type="smallBold" style={styles.deleteText}>
+                  Delete item
+                </ThemedText>
+              </ThemedView>
+            </Pressable>
+          ))}
       </ScrollView>
     </ThemedView>
   );
 }
 
-const NUTRITION_ROWS: { key: keyof Nutrition; label: string; unit: string }[] = [
+const NUTRITION_ROWS: {
+  key: keyof Nutrition;
+  label: string;
+  unit: string;
+  indented?: boolean;
+}[] = [
   { key: 'energyKcal', label: 'Energy', unit: 'kcal' },
-  { key: 'protein', label: 'Protein', unit: 'g' },
   { key: 'fat', label: 'Fat', unit: 'g' },
-  { key: 'saturatedFat', label: 'of which saturates', unit: 'g' },
+  { key: 'saturatedFat', label: 'of which saturates', unit: 'g', indented: true },
   { key: 'carbs', label: 'Carbohydrate', unit: 'g' },
-  { key: 'sugars', label: 'of which sugars', unit: 'g' },
+  { key: 'sugars', label: 'of which sugars', unit: 'g', indented: true },
   { key: 'fiber', label: 'Fibre', unit: 'g' },
+  { key: 'protein', label: 'Protein', unit: 'g' },
   { key: 'salt', label: 'Salt', unit: 'g' },
+  { key: 'sodium', label: 'Sodium', unit: 'g' },
 ];
 
 function NutritionPanel({ nutrition }: { nutrition: Nutrition }) {
+  const [expanded, setExpanded] = useState(false);
   const rows = NUTRITION_ROWS.filter((row) => typeof nutrition[row.key] === 'number');
   if (rows.length === 0) return null;
 
+  const energy = nutrition.energyKcal;
+
   return (
     <>
-      <ThemedText type="smallBold" themeColor="textSecondary" style={styles.nutritionHeading}>
-        Nutrition per 100 g
-      </ThemedText>
-      <ThemedView type="backgroundElement" style={styles.nutritionCard}>
-        {rows.map((row, index) => (
+      <Pressable onPress={() => setExpanded((open) => !open)}>
+        {({ pressed }) => (
           <ThemedView
-            key={row.key}
-            type="backgroundElement"
-            style={[styles.nutritionRow, index > 0 && styles.nutritionRowBorder]}>
-            <ThemedText
-              type="small"
-              themeColor="textSecondary"
-              style={row.label.startsWith('of which') ? styles.nutritionSubLabel : undefined}>
-              {row.label}
-            </ThemedText>
-            <ThemedText type="smallBold">
-              {formatNutrient(nutrition[row.key]!)} {row.unit}
+            type={pressed ? 'backgroundSelected' : 'backgroundElement'}
+            style={styles.nutritionHeader}>
+            <ThemedView
+              type={pressed ? 'backgroundSelected' : 'backgroundElement'}
+              style={styles.nutritionHeaderText}>
+              <ThemedText type="smallBold">Nutrition per 100 g</ThemedText>
+              {!expanded && typeof energy === 'number' ? (
+                <ThemedText type="small" themeColor="textSecondary">
+                  {formatNutrient(energy)} kcal · {rows.length} facts
+                </ThemedText>
+              ) : null}
+            </ThemedView>
+            <ThemedText type="smallBold" themeColor="textSecondary">
+              {expanded ? '▲' : '▼'}
             </ThemedText>
           </ThemedView>
-        ))}
-      </ThemedView>
-      <ThemedText type="small" themeColor="textSecondary">
-        From Open Food Facts. Values are for the matched product, so treat them as a guide.
-      </ThemedText>
+        )}
+      </Pressable>
+
+      {expanded && (
+        <>
+          <ThemedView type="backgroundElement" style={styles.nutritionCard}>
+            {rows.map((row, index) => (
+              <ThemedView
+                key={row.key}
+                type="backgroundElement"
+                style={[styles.nutritionRow, index > 0 && styles.nutritionRowBorder]}>
+                <ThemedText
+                  type="small"
+                  themeColor="textSecondary"
+                  style={row.indented ? styles.nutritionSubLabel : undefined}>
+                  {row.label}
+                </ThemedText>
+                <ThemedText type="smallBold">
+                  {formatNutrient(nutrition[row.key]!)} {row.unit}
+                </ThemedText>
+              </ThemedView>
+            ))}
+          </ThemedView>
+          <ThemedText type="small" themeColor="textSecondary">
+            From Open Food Facts. Values are for the matched product, so treat them as a guide.
+          </ThemedText>
+        </>
+      )}
     </>
   );
 }
@@ -360,8 +399,19 @@ const styles = StyleSheet.create({
     padding: 20,
     gap: 10,
   },
-  nutritionHeading: {
+  nutritionHeader: {
     marginTop: 10,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  nutritionHeaderText: {
+    flex: 1,
+    gap: 2,
   },
   nutritionCard: {
     borderRadius: 12,

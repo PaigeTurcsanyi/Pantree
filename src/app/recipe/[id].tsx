@@ -1,8 +1,9 @@
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Pressable, ScrollView, StyleSheet } from 'react-native';
 
+import { ConfirmPanel } from '@/components/confirm-panel';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
@@ -26,6 +27,7 @@ export default function RecipeDetailScreen() {
   const [scale, setScale] = useState(1);
   const [loaded, setLoaded] = useState(false);
   const [madeMessage, setMadeMessage] = useState('');
+  const [confirming, setConfirming] = useState<'made' | 'delete' | null>(null);
 
   const load = useCallback(
     async (nextScale: number) => {
@@ -47,6 +49,7 @@ export default function RecipeDetailScreen() {
     useCallback(() => {
       setMadeMessage('');
       setScale(1);
+      setConfirming(null);
       void load(1);
     }, [load])
   );
@@ -60,35 +63,28 @@ export default function RecipeDetailScreen() {
   // Suggested "fit my pantry" scale, always measured against a full batch.
   const fitScale = check && scale === 1 ? suggestScale(check) : null;
 
-  const confirmDelete = () => {
-    const doDelete = async () => {
-      await deleteRecipe(db, recipeId);
-      router.back();
-    };
-    const message = `Delete “${recipe?.title ?? 'this recipe'}”?`;
-    if (Platform.OS === 'web') {
-      if (window.confirm(message)) void doDelete();
-    } else {
-      Alert.alert('Delete recipe', message, [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => void doDelete() },
-      ]);
-    }
+  const doDelete = async () => {
+    await deleteRecipe(db, recipeId);
+    if (router.canGoBack()) router.back();
+    else router.replace('/recipes');
   };
 
-  const confirmMade = () => {
-    if (!check || !recipe) return;
-    const doDeduct = async () => {
-      const { deducted, skipped } = await deductRecipe(db, check.checks);
-      await load(scale);
-      const deductedText = `Deducted ${deducted} ingredient${deducted === 1 ? '' : 's'}`;
-      setMadeMessage(
-        skipped > 0
-          ? `${deductedText}. ${skipped} ${skipped === 1 ? 'wasn’t' : 'weren’t'} in your pantry, so nothing was subtracted for ${skipped === 1 ? 'it' : 'those'}.`
-          : `${deductedText} from your pantry.`
-      );
-    };
+  const doDeduct = async () => {
+    if (!check) return;
+    setConfirming(null);
+    const { deducted, skipped } = await deductRecipe(db, check.checks);
+    await load(scale);
+    const deductedText = `Deducted ${deducted} ingredient${deducted === 1 ? '' : 's'}`;
+    setMadeMessage(
+      skipped > 0
+        ? `${deductedText}. ${skipped} ${skipped === 1 ? 'wasn’t' : 'weren’t'} in your pantry, so nothing was subtracted for ${skipped === 1 ? 'it' : 'those'}.`
+        : `${deductedText} from your pantry.`
+    );
+  };
 
+  /** Preview of exactly what "I made this" will change. */
+  const deductionPreview = () => {
+    if (!check) return '';
     const lines = check.checks
       .filter((c) => c.match)
       .map(
@@ -98,19 +94,9 @@ export default function RecipeDetailScreen() {
             c.match!.unit
           )}`
       );
-    const message =
-      lines.length > 0
-        ? `This will update your pantry:\n\n${lines.join('\n')}`
-        : 'None of these ingredients match pantry items, so nothing will change.';
-
-    if (Platform.OS === 'web') {
-      if (window.confirm(message)) void doDeduct();
-    } else {
-      Alert.alert('I made this', message, [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Deduct', onPress: () => void doDeduct() },
-      ]);
-    }
+    return lines.length > 0
+      ? `This will update your pantry:\n\n${lines.join('\n')}`
+      : 'None of these ingredients match pantry items, so nothing will change.';
   };
 
   if (!recipe) {
@@ -227,15 +213,23 @@ export default function RecipeDetailScreen() {
           </ThemedText>
         ) : null}
 
-        {recipe.ingredients.length > 0 && (
-          <Pressable onPress={confirmMade}>
-            <ThemedView type="backgroundSelected" style={styles.button}>
-              <ThemedText type="smallBold">
-                {scale === 1 ? 'I made this' : `I made this (${formatNumber(scale)}× batch)`}
-              </ThemedText>
-            </ThemedView>
-          </Pressable>
-        )}
+        {recipe.ingredients.length > 0 &&
+          (confirming === 'made' ? (
+            <ConfirmPanel
+              message={deductionPreview()}
+              confirmLabel="Deduct"
+              onConfirm={() => void doDeduct()}
+              onCancel={() => setConfirming(null)}
+            />
+          ) : (
+            <Pressable onPress={() => setConfirming('made')}>
+              <ThemedView type="backgroundSelected" style={styles.button}>
+                <ThemedText type="smallBold">
+                  {scale === 1 ? 'I made this' : `I made this (${formatNumber(scale)}× batch)`}
+                </ThemedText>
+              </ThemedView>
+            </Pressable>
+          ))}
 
         <Pressable onPress={() => router.push(`/recipe/edit/${recipe.id}`)}>
           <ThemedView type="backgroundElement" style={styles.button}>
@@ -243,13 +237,23 @@ export default function RecipeDetailScreen() {
           </ThemedView>
         </Pressable>
 
-        <Pressable onPress={confirmDelete}>
-          <ThemedView type="backgroundElement" style={styles.button}>
-            <ThemedText type="smallBold" style={styles.deleteText}>
-              Delete recipe
-            </ThemedText>
-          </ThemedView>
-        </Pressable>
+        {confirming === 'delete' ? (
+          <ConfirmPanel
+            message={`Delete “${recipe.title}”?`}
+            confirmLabel="Delete"
+            destructive
+            onConfirm={() => void doDelete()}
+            onCancel={() => setConfirming(null)}
+          />
+        ) : (
+          <Pressable onPress={() => setConfirming('delete')}>
+            <ThemedView type="backgroundElement" style={styles.button}>
+              <ThemedText type="smallBold" style={styles.deleteText}>
+                Delete recipe
+              </ThemedText>
+            </ThemedView>
+          </Pressable>
+        )}
       </ScrollView>
     </ThemedView>
   );
