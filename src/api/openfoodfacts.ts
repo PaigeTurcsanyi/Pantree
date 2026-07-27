@@ -1,12 +1,18 @@
+import { Platform } from 'react-native';
+
 import type { PantryUnit } from '@/db/pantry';
 
 /**
  * Open Food Facts search — free, no key needed.
- * Uses the current search service; the older cgi/search.pl endpoint has
- * been unreliable (503s), which silently broke lookups.
  * https://openfoodfacts.github.io/search-a-licious/
+ *
+ * The service sends no access-control-allow-origin header, so a browser
+ * throws away every response. Native builds call it directly (CORS is a
+ * browser rule); the web build goes through the dev-server relay defined
+ * in metro.config.js.
  */
-const SEARCH_URL = 'https://search.openfoodfacts.org/search';
+const SEARCH_URL =
+  Platform.OS === 'web' ? '/__off-search' : 'https://search.openfoodfacts.org/search';
 
 const FIELDS = [
   'code',
