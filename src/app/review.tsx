@@ -77,7 +77,7 @@ export default function ReviewScreen() {
   const enrichInBackground = async (rows: { id: number; name: string; brand: string }[]) => {
     for (const row of rows) {
       try {
-        const results = await searchProducts(`${row.name} ${row.brand}`.trim());
+        const results = await searchProducts(row.name, row.brand);
         const match = results.find((r) => r.imageUrl);
         if (!match) continue;
         const current = await db.getFirstAsync<{

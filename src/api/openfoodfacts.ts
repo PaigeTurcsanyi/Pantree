@@ -1,20 +1,18 @@
-import { Platform } from 'react-native';
-
 import type { PantryUnit } from '@/db/pantry';
 
 /**
- * Open Food Facts read API — free, no key needed.
- * https://world.openfoodfacts.org/data
+ * Open Food Facts search — free, no key needed.
+ * Uses the current search service; the older cgi/search.pl endpoint has
+ * been unreliable (503s), which silently broke lookups.
+ * https://openfoodfacts.github.io/search-a-licious/
  */
-const SEARCH_URL = 'https://world.openfoodfacts.org/cgi/search.pl';
+const SEARCH_URL = 'https://search.openfoodfacts.org/search';
 
 const FIELDS = [
   'code',
   'product_name',
   'brands',
   'quantity',
-  'product_quantity',
-  'product_quantity_unit',
   'image_front_small_url',
   'image_front_url',
 ].join(',');
@@ -32,64 +30,89 @@ export type OffProduct = {
   imageUrl: string | null;
 };
 
-export async function searchProducts(query: string): Promise<OffProduct[]> {
+/**
+ * Looks up a product, preferring the most specific match. Searching
+ * "Raspberries Driscoll's" finds the exact package; if the brand is a
+ * store label Open Food Facts has never seen, we retry on the plain
+ * name so you still get a representative photo.
+ */
+export async function searchProducts(name: string, brand?: string | null): Promise<OffProduct[]> {
+  const plain = name.trim();
+  const specific = [plain, brand?.trim()].filter(Boolean).join(' ');
+
+  if (specific && specific !== plain) {
+    const withBrand = await runSearch(specific);
+    if (withBrand.some((product) => product.imageUrl)) return withBrand;
+  }
+  return runSearch(plain);
+}
+
+async function runSearch(query: string): Promise<OffProduct[]> {
+  if (!query) return [];
+
   const params = new URLSearchParams({
-    action: 'process',
-    search_terms: query,
-    search_simple: '1',
-    json: '1',
+    q: query,
     page_size: '8',
     fields: FIELDS,
   });
 
-  const response = await fetch(`${SEARCH_URL}?${params}`, {
-    headers:
-      // Browsers set their own User-Agent; OFF asks native API clients to identify themselves.
-      Platform.OS === 'web' ? undefined : { 'User-Agent': 'Pantree/0.1 (personal pantry app)' },
-  });
+  const response = await fetch(`${SEARCH_URL}?${params}`);
   if (!response.ok) {
     throw new Error(`Open Food Facts returned ${response.status}`);
   }
 
-  const data = (await response.json()) as { products?: OffApiProduct[] };
-  return (data.products ?? [])
-    .filter((p) => p.code && p.product_name?.trim())
+  const data = (await response.json()) as { hits?: OffApiHit[] };
+  return (data.hits ?? [])
+    .filter((hit) => hit.code && hit.product_name?.trim())
     .map(toOffProduct);
 }
 
-type OffApiProduct = {
+type OffApiHit = {
   code?: string;
   product_name?: string;
-  brands?: string;
+  /** This endpoint returns brands as an array, unlike the legacy one. */
+  brands?: string[] | string;
   quantity?: string;
-  product_quantity?: string | number;
-  product_quantity_unit?: string;
   image_front_small_url?: string;
   image_front_url?: string;
 };
 
-function toOffProduct(p: OffApiProduct): OffProduct {
-  const normalized = normalizePackageSize(p.product_quantity, p.product_quantity_unit);
+function toOffProduct(hit: OffApiHit): OffProduct {
+  const size = parseSizeLabel(hit.quantity);
   return {
-    code: p.code!,
-    name: p.product_name!.trim(),
-    brand: p.brands?.split(',')[0]?.trim() || null,
-    sizeLabel: p.quantity?.trim() || null,
-    packageQuantity: normalized?.quantity ?? null,
-    packageUnit: normalized?.unit ?? null,
-    imageSmallUrl: p.image_front_small_url || null,
-    imageUrl: p.image_front_url || p.image_front_small_url || null,
+    code: hit.code!,
+    name: hit.product_name!.trim(),
+    brand: firstBrand(hit.brands),
+    sizeLabel: hit.quantity?.trim() || null,
+    packageQuantity: size?.quantity ?? null,
+    packageUnit: size?.unit ?? null,
+    imageSmallUrl: hit.image_front_small_url || null,
+    imageUrl: hit.image_front_url || hit.image_front_small_url || null,
   };
 }
 
-function normalizePackageSize(
-  rawQuantity: string | number | undefined,
-  rawUnit: string | undefined
+function firstBrand(brands: string[] | string | undefined): string | null {
+  if (Array.isArray(brands)) return brands[0]?.trim() || null;
+  return brands?.split(',')[0]?.trim() || null;
+}
+
+/** Turns a printed size like "250 g", "125g", or "1.5 L" into base units. */
+export function parseSizeLabel(
+  label: string | undefined
 ): { quantity: number; unit: PantryUnit } | null {
-  const amount = typeof rawQuantity === 'string' ? Number(rawQuantity) : rawQuantity;
+  if (!label) return null;
+
+  const match = label
+    .trim()
+    .toLowerCase()
+    .replace(',', '.')
+    .match(/^([\d.]+)\s*(kg|g|mg|cl|ml|l)\b/);
+  if (!match) return null;
+
+  const amount = Number(match[1]);
   if (!amount || Number.isNaN(amount) || amount <= 0) return null;
 
-  switch (rawUnit?.toLowerCase()) {
+  switch (match[2]) {
     case 'g':
       return { quantity: amount, unit: 'g' };
     case 'kg':

@@ -107,7 +107,7 @@ export default function ItemScreen() {
     setSearching(true);
     setResults(null);
     try {
-      const found = await searchProducts(`${name} ${brand}`.trim());
+      const found = await searchProducts(name, brand);
       setResults(found);
       if (found.length === 0) {
         setSearchError('No matches found. The item saves fine without a photo.');
