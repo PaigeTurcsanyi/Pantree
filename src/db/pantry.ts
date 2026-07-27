@@ -1,5 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import type { Nutrition } from '@/api/openfoodfacts';
+
 export type PantryUnit = 'g' | 'ml' | 'each';
 
 export const PANTRY_UNITS: PantryUnit[] = ['g', 'ml', 'each'];
@@ -14,6 +16,8 @@ export type PantryItem = {
   category: string | null;
   barcode: string | null;
   off_id: string | null;
+  /** JSON-encoded Nutrition, or null. Use parseNutrition to read it. */
+  nutrition: string | null;
   updated_at: string;
 };
 
@@ -25,6 +29,7 @@ export type PantryItemInput = {
   category?: string | null;
   photo_url?: string | null;
   off_id?: string | null;
+  nutrition?: Nutrition | null;
 };
 
 export async function listPantryItems(db: SQLiteDatabase, search = ''): Promise<PantryItem[]> {
@@ -48,15 +53,16 @@ export async function getPantryItem(db: SQLiteDatabase, id: number): Promise<Pan
 
 export async function insertPantryItem(db: SQLiteDatabase, item: PantryItemInput): Promise<number> {
   const result = await db.runAsync(
-    `INSERT INTO pantry_items (name, brand, quantity, unit, category, photo_url, off_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO pantry_items (name, brand, quantity, unit, category, photo_url, off_id, nutrition)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     item.name.trim(),
     item.brand?.trim() || null,
     item.quantity,
     item.unit,
     item.category?.trim() || null,
     item.photo_url || null,
-    item.off_id || null
+    item.off_id || null,
+    item.nutrition ? JSON.stringify(item.nutrition) : null
   );
   return result.lastInsertRowId;
 }
@@ -69,7 +75,7 @@ export async function updatePantryItem(
   await db.runAsync(
     `UPDATE pantry_items
      SET name = ?, brand = ?, quantity = ?, unit = ?, category = ?,
-         photo_url = ?, off_id = ?, updated_at = datetime('now')
+         photo_url = ?, off_id = ?, nutrition = ?, updated_at = datetime('now')
      WHERE id = ?`,
     item.name.trim(),
     item.brand?.trim() || null,
@@ -78,12 +84,23 @@ export async function updatePantryItem(
     item.category?.trim() || null,
     item.photo_url || null,
     item.off_id || null,
+    item.nutrition ? JSON.stringify(item.nutrition) : null,
     id
   );
 }
 
 export async function deletePantryItem(db: SQLiteDatabase, id: number): Promise<void> {
   await db.runAsync('DELETE FROM pantry_items WHERE id = ?', id);
+}
+
+export function parseNutrition(raw: string | null): Nutrition | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Nutrition;
+    return parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0 ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 export function formatQuantity(quantity: number, unit: PantryUnit): string {

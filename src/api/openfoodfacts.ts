@@ -15,7 +15,20 @@ const FIELDS = [
   'quantity',
   'image_front_small_url',
   'image_front_url',
+  'nutriments',
 ].join(',');
+
+/** Nutrition per 100 g/ml. Any field may be missing — coverage varies by product. */
+export type Nutrition = {
+  energyKcal?: number;
+  protein?: number;
+  fat?: number;
+  saturatedFat?: number;
+  carbs?: number;
+  sugars?: number;
+  fiber?: number;
+  salt?: number;
+};
 
 export type OffProduct = {
   code: string;
@@ -28,6 +41,8 @@ export type OffProduct = {
   packageUnit: PantryUnit | null;
   imageSmallUrl: string | null;
   imageUrl: string | null;
+  /** Null when this product has no nutrition data on record. */
+  nutrition: Nutrition | null;
 };
 
 /**
@@ -75,6 +90,7 @@ type OffApiHit = {
   quantity?: string;
   image_front_small_url?: string;
   image_front_url?: string;
+  nutriments?: Record<string, number | undefined>;
 };
 
 function toOffProduct(hit: OffApiHit): OffProduct {
@@ -88,7 +104,29 @@ function toOffProduct(hit: OffApiHit): OffProduct {
     packageUnit: size?.unit ?? null,
     imageSmallUrl: hit.image_front_small_url || null,
     imageUrl: hit.image_front_url || hit.image_front_small_url || null,
+    nutrition: toNutrition(hit.nutriments),
   };
+}
+
+function toNutrition(raw: Record<string, number | undefined> | undefined): Nutrition | null {
+  if (!raw) return null;
+
+  const nutrition: Nutrition = {
+    energyKcal: raw['energy-kcal_100g'],
+    protein: raw.proteins_100g,
+    fat: raw.fat_100g,
+    saturatedFat: raw['saturated-fat_100g'],
+    carbs: raw.carbohydrates_100g,
+    sugars: raw.sugars_100g,
+    fiber: raw.fiber_100g,
+    salt: raw.salt_100g,
+  };
+
+  // Drop absent values so the UI can tell "no data" from "zero".
+  for (const key of Object.keys(nutrition) as (keyof Nutrition)[]) {
+    if (typeof nutrition[key] !== 'number' || Number.isNaN(nutrition[key])) delete nutrition[key];
+  }
+  return Object.keys(nutrition).length > 0 ? nutrition : null;
 }
 
 function firstBrand(brands: string[] | string | undefined): string | null {

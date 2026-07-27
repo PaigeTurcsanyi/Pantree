@@ -73,12 +73,12 @@ export default function ReviewScreen() {
     }
   };
 
-  /** Best-effort photo enrichment after save; failures are silent by design. */
+  /** Best-effort photo and nutrition enrichment; failures are silent by design. */
   const enrichInBackground = async (rows: { id: number; name: string; brand: string }[]) => {
     for (const row of rows) {
       try {
         const results = await searchProducts(row.name, row.brand);
-        const match = results.find((r) => r.imageUrl);
+        const match = results.find((r) => r.imageUrl) ?? results.find((r) => r.nutrition);
         if (!match) continue;
         const current = await db.getFirstAsync<{
           name: string;
@@ -92,6 +92,7 @@ export default function ReviewScreen() {
           ...current,
           photo_url: match.imageUrl,
           off_id: match.code,
+          nutrition: match.nutrition,
         });
       } catch {
         // enrichment is a bonus, not a blocker

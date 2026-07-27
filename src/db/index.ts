@@ -6,13 +6,11 @@ export const DATABASE_NAME = 'pantree.db';
  * Bump this and add a migration step below whenever the schema changes.
  * Existing installs migrate forward from whatever version they're on.
  */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   const result = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   let version = result?.user_version ?? 0;
-
-  if (version >= SCHEMA_VERSION) return;
 
   if (version === 0) {
     // Amounts are stored in a normalized base unit: grams for mass,
@@ -77,7 +75,28 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
     version = 3;
   }
 
+  if (version === 3) {
+    version = 4;
+  }
+
   await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+
+  // Added columns are applied here rather than in a version step. A
+  // user_version that runs ahead of the actual schema (an interrupted
+  // migration, a restored database) would otherwise skip them forever,
+  // and every INSERT would fail on the missing column.
+  await addColumnIfMissing(db, 'pantry_items', 'nutrition', 'TEXT');
+}
+
+async function addColumnIfMissing(
+  db: SQLiteDatabase,
+  table: string,
+  column: string,
+  definition: string
+) {
+  const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
+  if (columns.some((c) => c.name === column)) return;
+  await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
 /**

@@ -4,7 +4,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
 
-import { OffProduct, searchProducts } from '@/api/openfoodfacts';
+import { Nutrition, OffProduct, searchProducts } from '@/api/openfoodfacts';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
@@ -14,6 +14,7 @@ import {
   insertPantryItem,
   PANTRY_UNITS,
   PantryUnit,
+  parseNutrition,
   updatePantryItem,
 } from '@/db/pantry';
 import { useTheme } from '@/hooks/use-theme';
@@ -34,6 +35,7 @@ export default function ItemScreen() {
   const [category, setCategory] = useState('');
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [offId, setOffId] = useState<string | null>(null);
+  const [nutrition, setNutrition] = useState<Nutrition | null>(null);
   const [error, setError] = useState('');
 
   const [searching, setSearching] = useState(false);
@@ -51,6 +53,7 @@ export default function ItemScreen() {
       setCategory(item.category ?? '');
       setPhotoUrl(item.photo_url);
       setOffId(item.off_id);
+      setNutrition(parseNutrition(item.nutrition));
     });
   }, [db, itemId]);
 
@@ -72,6 +75,7 @@ export default function ItemScreen() {
       category,
       photo_url: photoUrl,
       off_id: offId,
+      nutrition,
     };
     if (itemId === null) {
       await insertPantryItem(db, input);
@@ -122,6 +126,7 @@ export default function ItemScreen() {
   const applyProduct = (product: OffProduct) => {
     setPhotoUrl(product.imageUrl);
     setOffId(product.code);
+    setNutrition(product.nutrition);
     if (!brand.trim() && product.brand) setBrand(product.brand);
     if (product.packageQuantity && product.packageUnit && !Number(quantity.replace(',', '.'))) {
       setQuantity(String(product.packageQuantity));
@@ -270,6 +275,8 @@ export default function ItemScreen() {
           style={inputStyle}
         />
 
+        {nutrition && <NutritionPanel nutrition={nutrition} />}
+
         {error ? (
           <ThemedText type="smallBold" style={styles.error}>
             {error}
@@ -296,6 +303,55 @@ export default function ItemScreen() {
   );
 }
 
+const NUTRITION_ROWS: { key: keyof Nutrition; label: string; unit: string }[] = [
+  { key: 'energyKcal', label: 'Energy', unit: 'kcal' },
+  { key: 'protein', label: 'Protein', unit: 'g' },
+  { key: 'fat', label: 'Fat', unit: 'g' },
+  { key: 'saturatedFat', label: 'of which saturates', unit: 'g' },
+  { key: 'carbs', label: 'Carbohydrate', unit: 'g' },
+  { key: 'sugars', label: 'of which sugars', unit: 'g' },
+  { key: 'fiber', label: 'Fibre', unit: 'g' },
+  { key: 'salt', label: 'Salt', unit: 'g' },
+];
+
+function NutritionPanel({ nutrition }: { nutrition: Nutrition }) {
+  const rows = NUTRITION_ROWS.filter((row) => typeof nutrition[row.key] === 'number');
+  if (rows.length === 0) return null;
+
+  return (
+    <>
+      <ThemedText type="smallBold" themeColor="textSecondary" style={styles.nutritionHeading}>
+        Nutrition per 100 g
+      </ThemedText>
+      <ThemedView type="backgroundElement" style={styles.nutritionCard}>
+        {rows.map((row, index) => (
+          <ThemedView
+            key={row.key}
+            type="backgroundElement"
+            style={[styles.nutritionRow, index > 0 && styles.nutritionRowBorder]}>
+            <ThemedText
+              type="small"
+              themeColor="textSecondary"
+              style={row.label.startsWith('of which') ? styles.nutritionSubLabel : undefined}>
+              {row.label}
+            </ThemedText>
+            <ThemedText type="smallBold">
+              {formatNutrient(nutrition[row.key]!)} {row.unit}
+            </ThemedText>
+          </ThemedView>
+        ))}
+      </ThemedView>
+      <ThemedText type="small" themeColor="textSecondary">
+        From Open Food Facts. Values are for the matched product, so treat them as a guide.
+      </ThemedText>
+    </>
+  );
+}
+
+function formatNutrient(value: number): string {
+  return Number(value.toFixed(value < 10 ? 1 : 0)).toString();
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -303,6 +359,27 @@ const styles = StyleSheet.create({
   form: {
     padding: 20,
     gap: 10,
+  },
+  nutritionHeading: {
+    marginTop: 10,
+  },
+  nutritionCard: {
+    borderRadius: 12,
+    paddingHorizontal: 14,
+  },
+  nutritionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 9,
+    gap: 12,
+  },
+  nutritionRowBorder: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(128,128,128,0.3)',
+  },
+  nutritionSubLabel: {
+    paddingLeft: 12,
   },
   input: {
     borderRadius: 10,
