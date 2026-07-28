@@ -19,8 +19,22 @@ export type PantryItem = {
   off_id: string | null;
   /** JSON-encoded Nutrition, or null. Use parseNutrition to read it. */
   nutrition: string | null;
+  /** What the item held when last stocked; drives the level bar. */
+  original_quantity: number | null;
   updated_at: string;
 };
+
+/** Below this fraction remaining, an item counts as running low. */
+export const LOW_STOCK_FRACTION = 0.25;
+
+/** How full an item is, for the level bar and the LOW badge. */
+export function stockLevel(item: PantryItem): { fraction: number; low: boolean } {
+  const original = item.original_quantity && item.original_quantity > 0
+    ? item.original_quantity
+    : item.quantity;
+  const fraction = original > 0 ? Math.min(1, item.quantity / original) : 0;
+  return { fraction, low: item.quantity <= 0 || fraction < LOW_STOCK_FRACTION };
+}
 
 export type PantryItemInput = {
   name: string;
@@ -91,8 +105,8 @@ export async function getPantryItem(db: SQLiteDatabase, id: number): Promise<Pan
 
 export async function insertPantryItem(db: SQLiteDatabase, item: PantryItemInput): Promise<number> {
   const result = await db.runAsync(
-    `INSERT INTO pantry_items (name, brand, quantity, unit, category, photo_url, off_id, nutrition)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO pantry_items (name, brand, quantity, unit, category, photo_url, off_id, nutrition, original_quantity)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     item.name.trim(),
     item.brand?.trim() || null,
     item.quantity,
@@ -100,7 +114,8 @@ export async function insertPantryItem(db: SQLiteDatabase, item: PantryItemInput
     item.category?.trim() || null,
     item.photo_url || null,
     item.off_id || null,
-    item.nutrition ? JSON.stringify(item.nutrition) : null
+    item.nutrition ? JSON.stringify(item.nutrition) : null,
+    item.quantity
   );
   return result.lastInsertRowId;
 }
@@ -113,7 +128,9 @@ export async function updatePantryItem(
   await db.runAsync(
     `UPDATE pantry_items
      SET name = ?, brand = ?, quantity = ?, unit = ?, category = ?,
-         photo_url = ?, off_id = ?, nutrition = ?, updated_at = datetime('now')
+         photo_url = ?, off_id = ?, nutrition = ?, updated_at = datetime('now'),
+         -- Restocking by hand raises the baseline the level bar measures against.
+         original_quantity = MAX(COALESCE(original_quantity, 0), ?)
      WHERE id = ?`,
     item.name.trim(),
     item.brand?.trim() || null,
@@ -123,6 +140,7 @@ export async function updatePantryItem(
     item.photo_url || null,
     item.off_id || null,
     item.nutrition ? JSON.stringify(item.nutrition) : null,
+    item.quantity,
     id
   );
 }
@@ -134,7 +152,12 @@ export async function addToPantryItem(
   amount: number
 ): Promise<void> {
   await db.runAsync(
-    `UPDATE pantry_items SET quantity = quantity + ?, updated_at = datetime('now') WHERE id = ?`,
+    `UPDATE pantry_items
+     SET quantity = quantity + ?,
+         original_quantity = COALESCE(original_quantity, 0) + ?,
+         updated_at = datetime('now')
+     WHERE id = ?`,
+    amount,
     amount,
     id
   );

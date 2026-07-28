@@ -12,20 +12,20 @@ export default function AppTabs() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: theme.text,
-        tabBarInactiveTintColor: theme.textSecondary,
-        tabBarStyle: { backgroundColor: theme.background },
+        tabBarActiveTintColor: theme.accent,
+        tabBarInactiveTintColor: theme.tabInactive,
+        tabBarStyle: {
+          backgroundColor: theme.background,
+          borderTopColor: theme.searchBorder,
+        },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
       }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'Pantry',
           tabBarIcon: ({ color, size }) => (
-            <SymbolView
-              name={{ ios: 'basket', web: 'shopping_basket' }}
-              tintColor={color}
-              size={size}
-            />
+            <SymbolView name={{ ios: 'leaf', web: 'eco' }} tintColor={color} size={size} />
           ),
         }}
       />

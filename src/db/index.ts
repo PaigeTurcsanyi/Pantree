@@ -87,6 +87,12 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   await addColumnIfMissing(db, 'pantry_items', 'nutrition', 'TEXT');
   await addColumnIfMissing(db, 'recipes', 'photo_url', 'TEXT');
   await addColumnIfMissing(db, 'substitutions', 'substitute_unit', 'TEXT');
+  // What the item held when it was last stocked, so the level bar can show
+  // how much is left rather than just a raw number.
+  await addColumnIfMissing(db, 'pantry_items', 'original_quantity', 'REAL');
+  await db.execAsync(
+    'UPDATE pantry_items SET original_quantity = quantity WHERE original_quantity IS NULL'
+  );
 
   // Runs after the column exists, and tops up rows added in later versions.
   await seedSubstitutions(db);

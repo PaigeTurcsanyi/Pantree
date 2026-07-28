@@ -1,16 +1,25 @@
-import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useEffect, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, TextInput, useWindowDimensions } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { FlatList, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Icon } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { formatQuantity, listPantryItems, PantryItem } from '@/db/pantry';
+import { IconButton, LevelBar, Pill, ProductTile, SearchField, TileBadge } from '@/components/ui';
+import { Radius, Shadows, Spacing } from '@/constants/theme';
+import {
+  formatQuantity,
+  listPantryItems,
+  PantryItem,
+  stockLevel,
+  updatePantryItem,
+} from '@/db/pantry';
 import { useTheme } from '@/hooks/use-theme';
 
-const GAP = 12;
+const GAP = Spacing.grid;
 const MIN_CARD_WIDTH = 150;
 
 export default function PantryScreen() {
@@ -20,12 +29,14 @@ export default function PantryScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [search, setSearch] = useState('');
+  const [category, setCategory] = useState<string | null>(null);
   const [items, setItems] = useState<PantryItem[]>([]);
   const [loaded, setLoaded] = useState(false);
 
-  // Fill the width with as many cards as fit comfortably — 2 on a phone,
-  // more on an iPad.
-  const columns = Math.max(2, Math.floor((width - 40 + GAP) / (MIN_CARD_WIDTH + GAP)));
+  const columns = Math.max(
+    2,
+    Math.floor((width - Spacing.screen * 2 + GAP) / (MIN_CARD_WIDTH + GAP))
+  );
 
   const refresh = useCallback(() => {
     listPantryItems(db, search).then((rows) => {
@@ -37,49 +48,107 @@ export default function PantryScreen() {
   useEffect(refresh, [refresh]);
   useFocusEffect(refresh);
 
-  return (
-    <ThemedView style={[styles.container, { paddingTop: insets.top + 16 }]}>
-      <ThemedView style={styles.header}>
-        <ThemedText type="subtitle">Pantry</ThemedText>
-        <ThemedView style={styles.headerButtons}>
-          <Pressable
-            onPress={() => router.push('/import')}
-            style={[styles.addButton, { backgroundColor: theme.backgroundElement }]}>
-            <ThemedText type="smallBold">Import</ThemedText>
-          </Pressable>
-          <Pressable
-            onPress={() => router.push('/item/new')}
-            style={[styles.addButton, { backgroundColor: theme.backgroundElement }]}>
-            <ThemedText type="smallBold">+ Add</ThemedText>
-          </Pressable>
-        </ThemedView>
-      </ThemedView>
+  const categories = useMemo(() => {
+    const names = new Set<string>();
+    for (const item of items) if (item.category?.trim()) names.add(item.category.trim());
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [items]);
 
-      <TextInput
-        value={search}
-        onChangeText={setSearch}
-        placeholder="Search pantry"
-        placeholderTextColor={theme.textSecondary}
-        autoCorrect={false}
-        style={[styles.search, { backgroundColor: theme.backgroundElement, color: theme.text }]}
-      />
+  const visible = category
+    ? items.filter((item) => item.category?.trim() === category)
+    : items;
+
+  const lowCount = items.filter((item) => stockLevel(item).low).length;
+
+  /** Lets you attach your own picture when Open Food Facts has none. */
+  const attachPhoto = async (item: PantryItem) => {
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+    });
+    if (picked.canceled) return;
+    await updatePantryItem(db, item.id, {
+      name: item.name,
+      brand: item.brand,
+      quantity: item.quantity,
+      unit: item.unit,
+      category: item.category,
+      photo_url: picked.assets[0].uri,
+      off_id: item.off_id,
+    });
+    refresh();
+  };
+
+  return (
+    <ThemedView style={[styles.container, { paddingTop: insets.top + 12 }]}>
+      <View style={styles.header}>
+        <View style={styles.wordmark}>
+          <View style={styles.wordmarkRow}>
+            <Icon name="eco" size={26} color={theme.accent} />
+            <ThemedText type="subtitle">Pantree</ThemedText>
+          </View>
+          <ThemedText type="meta" themeColor="textSecondary">
+            {items.length} {items.length === 1 ? 'thing' : 'things'} growing in your pantry
+            {lowCount > 0 ? ' · ' : ''}
+            {lowCount > 0 ? (
+              <ThemedText type="meta" style={{ color: theme.warn, fontWeight: '700' }}>
+                {lowCount} running low
+              </ThemedText>
+            ) : null}
+          </ThemedText>
+        </View>
+        <View style={styles.headerButtons}>
+          <IconButton
+            icon="photo_camera"
+            onPress={() => router.push('/import')}
+            accessibilityLabel="Import from screenshot"
+          />
+          <IconButton
+            icon="add"
+            variant="accent"
+            onPress={() => router.push('/item/new')}
+            accessibilityLabel="Add an item"
+          />
+        </View>
+      </View>
+
+      <SearchField value={search} onChangeText={setSearch} placeholder="Search your pantry" />
+
+      {categories.length > 0 && (
+        <View style={styles.chipRow}>
+          <Pill label="All" active={category === null} onPress={() => setCategory(null)} />
+          {categories.map((name) => (
+            <Pill
+              key={name}
+              label={name}
+              active={category === name}
+              onPress={() => setCategory(name)}
+            />
+          ))}
+        </View>
+      )}
 
       <FlatList
         key={columns}
-        data={items}
+        data={visible}
         keyExtractor={(item) => String(item.id)}
         numColumns={columns}
         columnWrapperStyle={styles.column}
-        contentContainerStyle={items.length === 0 ? styles.emptyList : styles.grid}
+        contentContainerStyle={visible.length === 0 ? styles.emptyList : styles.grid}
+        showsVerticalScrollIndicator={false}
         renderItem={({ item }) => (
-          <PantryCard item={item} onPress={() => router.push(`/item/${item.id}`)} />
+          <PantryCard
+            item={item}
+            onPress={() => router.push(`/item/${item.id}`)}
+            onAttachPhoto={() => attachPhoto(item)}
+          />
         )}
         ListEmptyComponent={
           loaded ? (
             <ThemedText themeColor="textSecondary" style={styles.emptyText}>
-              {search
-                ? `Nothing matches “${search}”.`
-                : 'Your pantry is empty. Tap “+ Add item” to get started.'}
+              {search || category
+                ? 'Nothing here matches that.'
+                : 'Your pantry is empty. Import a grocery screenshot or add something by hand.'}
             </ThemedText>
           ) : null
         }
@@ -88,45 +157,62 @@ export default function PantryScreen() {
   );
 }
 
-function PantryCard({ item, onPress }: { item: PantryItem; onPress: () => void }) {
+function PantryCard({
+  item,
+  onPress,
+  onAttachPhoto,
+}: {
+  item: PantryItem;
+  onPress: () => void;
+  onAttachPhoto: () => void;
+}) {
+  const theme = useTheme();
+  const { fraction, low } = stockLevel(item);
+
   return (
     <Pressable onPress={onPress} style={styles.cardPressable}>
       {({ pressed }) => (
-        <ThemedView
-          type={pressed ? 'backgroundSelected' : 'backgroundElement'}
-          style={styles.card}>
-          <ThemedView type="backgroundSelected" style={styles.photoWrap}>
-            {item.photo_url ? (
-              <Image
-                source={item.photo_url}
-                style={styles.photo}
-                contentFit="contain"
-                transition={150}
-              />
-            ) : (
-              <ThemedText type="title" themeColor="textSecondary" style={styles.placeholderLetter}>
-                {item.name.slice(0, 1).toUpperCase()}
-              </ThemedText>
-            )}
-          </ThemedView>
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: theme.surface, borderColor: theme.hairline },
+            pressed && styles.cardPressed,
+          ]}>
+          <ProductTile
+            photoUrl={item.photo_url}
+            name={item.name}
+            category={item.category}
+            style={styles.tile}>
+            {low ? <TileBadge label="LOW" tone="warn" /> : null}
+            <Pressable
+              onPress={onAttachPhoto}
+              style={styles.tileAction}
+              accessibilityLabel={`Add a photo for ${item.name}`}>
+              <Icon name="add_a_photo" size={14} color={theme.textSecondary} />
+            </Pressable>
+          </ProductTile>
 
-          <ThemedView
-            type={pressed ? 'backgroundSelected' : 'backgroundElement'}
-            style={styles.cardText}>
-            <ThemedText type="small" numberOfLines={2}>
+          <View style={styles.cardBody}>
+            <ThemedText type="cardName" numberOfLines={2}>
               {item.name}
             </ThemedText>
             {item.brand ? (
-              <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+              <ThemedText type="meta" themeColor="textMuted" numberOfLines={1}>
                 {item.brand}
               </ThemedText>
             ) : null}
-            <ThemedText type="smallBold" style={styles.quantity}>
+          </View>
+
+          <View style={styles.cardFooter}>
+            <ThemedText
+              type="meta"
+              style={[styles.quantity, low && { color: theme.warn }]}>
               {formatQuantity(item.quantity, item.unit)}
               {item.unit === 'each' ? ` ${item.quantity === 1 ? 'item' : 'items'}` : ''}
             </ThemedText>
-          </ThemedView>
-        </ThemedView>
+            <LevelBar fraction={fraction} low={low} />
+          </View>
+        </View>
       )}
     </Pressable>
   );
@@ -135,33 +221,39 @@ function PantryCard({ item, onPress }: { item: PantryItem; onPress: () => void }
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 20,
+    paddingHorizontal: Spacing.screen,
   },
   header: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
+    gap: Spacing.three,
+    marginBottom: Spacing.three,
+  },
+  wordmark: {
+    flex: 1,
+    gap: 2,
+  },
+  wordmarkRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    gap: Spacing.two,
   },
   headerButtons: {
     flexDirection: 'row',
-    gap: 8,
+    gap: Spacing.two,
+    paddingTop: 4,
   },
-  addButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-  },
-  search: {
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    fontSize: 16,
-    marginBottom: 12,
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+    marginTop: Spacing.three,
   },
   grid: {
     gap: GAP,
-    paddingBottom: 24,
+    paddingTop: Spacing.three,
+    paddingBottom: Spacing.five,
   },
   column: {
     gap: GAP,
@@ -172,36 +264,46 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     textAlign: 'center',
+    paddingHorizontal: Spacing.four,
   },
   cardPressable: {
     flex: 1,
   },
   card: {
     flex: 1,
-    borderRadius: 14,
-    padding: 10,
-    gap: 10,
+    borderRadius: Radius.card,
+    borderWidth: 1,
+    padding: 9,
+    gap: Spacing.two,
+    ...Shadows.card,
   },
-  photoWrap: {
+  cardPressed: {
+    opacity: 0.85,
+  },
+  tile: {
     width: '100%',
     aspectRatio: 1,
-    borderRadius: 10,
+  },
+  tileAction: {
+    position: 'absolute',
+    right: 6,
+    bottom: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
+    backgroundColor: 'rgba(255,253,248,0.85)',
   },
-  photo: {
-    width: '100%',
-    height: '100%',
+  cardBody: {
+    gap: 1,
   },
-  placeholderLetter: {
-    fontSize: 40,
-    lineHeight: 48,
-  },
-  cardText: {
-    gap: 2,
+  cardFooter: {
+    marginTop: 'auto',
+    gap: 6,
   },
   quantity: {
-    marginTop: 2,
+    fontWeight: '700',
+    fontSize: 13,
   },
 });

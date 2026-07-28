@@ -10,11 +10,11 @@ export default function AppTabs() {
   return (
     <NativeTabs
       backgroundColor={colors.background}
-      indicatorColor={colors.backgroundElement}
-      labelStyle={{ selected: { color: colors.text } }}>
+      indicatorColor={colors.surfaceSunken}
+      labelStyle={{ selected: { color: colors.accent }, color: colors.tabInactive }}>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Pantry</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="basket" />
+        <NativeTabs.Trigger.Icon sf="leaf" />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="recipes">
