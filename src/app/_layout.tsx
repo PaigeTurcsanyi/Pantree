@@ -17,6 +17,10 @@ export default function RootLayout() {
           <Stack>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="item/[id]" options={{ presentation: 'modal', title: 'Item' }} />
+            <Stack.Screen
+              name="import"
+              options={{ presentation: 'modal', title: 'Import from screenshot' }}
+            />
             <Stack.Screen name="review" options={{ presentation: 'modal', title: 'Review items' }} />
             <Stack.Screen name="recipe/[id]" options={{ title: 'Recipe' }} />
             <Stack.Screen

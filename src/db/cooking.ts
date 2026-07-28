@@ -14,6 +14,8 @@ export type Substitution = {
   substitute: string;
   ratio: number;
   notes: string | null;
+  /** Unit of the substitute when it differs from the ingredient's. */
+  substitute_unit: PantryUnit | null;
 };
 
 /** A substitute you actually have enough of on hand. */
@@ -22,6 +24,8 @@ export type SubstituteOption = {
   item: PantryItem;
   /** How much of the substitute this recipe would need. */
   amount: number;
+  /** Unit that amount is measured in — not always the ingredient's. */
+  unit: PantryUnit;
 };
 
 export type IngredientCheck = {
@@ -93,14 +97,22 @@ export function findSubstitutes(
   for (const substitution of substitutions) {
     if (matchScore(ingredientName, substitution.ingredient) < NAME_CONTAINMENT_SCORE) continue;
 
-    const amount = round(shortfall * substitution.ratio);
+    // A substitute is usually measured like the ingredient, but not always:
+    // whole lemons replace lemon juice, counted rather than poured.
+    const substituteUnit = substitution.substitute_unit ?? unit;
+    const rawAmount = shortfall * substitution.ratio;
+    // Counted things can't be split — half a lemon won't do if you need one.
+    const amount =
+      substituteUnit === 'each' ? Math.ceil(rawAmount - 1e-9) : round(rawAmount);
+    if (amount <= 0) continue;
+
     let best: PantryItem | null = null;
     let bestScore = 0;
     for (const item of pantry) {
       // Never offer the item that's already covering this ingredient —
       // "substitute flour with flour" is noise.
       if (item.id === excludeItemId) continue;
-      if (item.unit !== unit) continue;
+      if (item.unit !== substituteUnit) continue;
       if (item.quantity + 1e-9 < amount) continue;
       // Require a solid name match; loose token overlap pairs unrelated
       // products like "bread flour" with "all-purpose flour".
@@ -110,7 +122,7 @@ export function findSubstitutes(
         bestScore = score;
       }
     }
-    if (best) options.push({ substitution, item: best, amount });
+    if (best) options.push({ substitution, item: best, amount, unit: substituteUnit });
   }
   return options;
 }

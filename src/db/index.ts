@@ -71,7 +71,6 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   }
 
   if (version === 2) {
-    await seedSubstitutions(db);
     version = 3;
   }
 
@@ -87,6 +86,10 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   // and every INSERT would fail on the missing column.
   await addColumnIfMissing(db, 'pantry_items', 'nutrition', 'TEXT');
   await addColumnIfMissing(db, 'recipes', 'photo_url', 'TEXT');
+  await addColumnIfMissing(db, 'substitutions', 'substitute_unit', 'TEXT');
+
+  // Runs after the column exists, and tops up rows added in later versions.
+  await seedSubstitutions(db);
 }
 
 async function addColumnIfMissing(
@@ -100,48 +103,71 @@ async function addColumnIfMissing(
   await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
-/**
- * Starter substitution list. `ratio` is how much substitute replaces one
- * unit of the original, so 1 g butter -> 0.75 g oil.
- */
-const STARTER_SUBSTITUTIONS: [string, string, number, string][] = [
-  ['butter', 'oil', 0.75, 'Use ¾ as much oil. Best in cakes and quick breads.'],
-  ['oil', 'butter', 1.25, 'Melt the butter first.'],
-  ['butter', 'margarine', 1, 'Swaps one-for-one.'],
-  ['buttermilk', 'milk', 1, 'Add 1 tbsp lemon juice or vinegar per cup and rest 5 min.'],
-  ['buttermilk', 'yogurt', 1, 'Thin plain yogurt with a splash of milk.'],
-  ['milk', 'water', 1, 'Works in a pinch; the result is less rich.'],
-  ['heavy cream', 'milk', 1, 'Add 2 tbsp melted butter per cup for richness.'],
-  ['sour cream', 'yogurt', 1, 'Plain Greek yogurt is the closest match.'],
-  ['egg', 'flax seed', 7, 'Flax egg: 7 g ground flax + 45 ml water per egg, rest 5 min.'],
-  ['egg', 'apple sauce', 60, 'About 60 g apple sauce per egg. Best in sweet bakes.'],
-  ['white sugar', 'brown sugar', 1, 'Swaps one-for-one; adds a light molasses note.'],
-  ['brown sugar', 'white sugar', 1, 'Add 1 tsp molasses per 100 g if you have it.'],
-  ['honey', 'maple syrup', 1, 'Swaps one-for-one.'],
-  ['maple syrup', 'honey', 1, 'Swaps one-for-one.'],
-  ['all-purpose flour', 'bread flour', 1, 'Slightly chewier result.'],
-  ['bread flour', 'all-purpose flour', 1, 'Slightly softer result.'],
-  ['baking powder', 'baking soda', 0.25, 'Use ¼ as much soda plus an acid like lemon juice.'],
-  ['cornstarch', 'flour', 2, 'Use twice as much flour to thicken.'],
-  ['lemon juice', 'vinegar', 1, 'White or cider vinegar works for acidity.'],
-  ['vinegar', 'lemon juice', 1, 'Swaps one-for-one for acidity.'],
-  ['garlic', 'garlic powder', 0.25, 'About ⅛ tsp powder per clove.'],
-  ['onion', 'onion powder', 0.1, 'Use sparingly; powder is much stronger.'],
+type SeedSubstitution = {
+  ingredient: string;
+  substitute: string;
+  /** How much substitute replaces one unit of the ingredient. */
+  ratio: number;
+  notes: string;
+  /**
+   * Unit the substitute is measured in, when it differs from the
+   * ingredient's. Lets whole fruit stand in for its juice.
+   */
+  substituteUnit?: 'g' | 'ml' | 'each';
+};
+
+/** `ratio` is per one unit of the ingredient, so 1 g butter -> 0.75 g oil. */
+const STARTER_SUBSTITUTIONS: SeedSubstitution[] = [
+  { ingredient: 'butter', substitute: 'oil', ratio: 0.75, notes: 'Use ¾ as much oil. Best in cakes and quick breads.' },
+  { ingredient: 'oil', substitute: 'butter', ratio: 1.25, notes: 'Melt the butter first.' },
+  { ingredient: 'butter', substitute: 'margarine', ratio: 1, notes: 'Swaps one-for-one.' },
+  { ingredient: 'buttermilk', substitute: 'milk', ratio: 1, notes: 'Add 1 tbsp lemon juice or vinegar per cup and rest 5 min.' },
+  { ingredient: 'buttermilk', substitute: 'yogurt', ratio: 1, notes: 'Thin plain yogurt with a splash of milk.' },
+  { ingredient: 'milk', substitute: 'water', ratio: 1, notes: 'Works in a pinch; the result is less rich.' },
+  { ingredient: 'heavy cream', substitute: 'milk', ratio: 1, notes: 'Add 2 tbsp melted butter per cup for richness.' },
+  { ingredient: 'sour cream', substitute: 'yogurt', ratio: 1, notes: 'Plain Greek yogurt is the closest match.' },
+  { ingredient: 'egg', substitute: 'flax seed', ratio: 7, notes: 'Flax egg: 7 g ground flax + 45 ml water per egg, rest 5 min.', substituteUnit: 'g' },
+  { ingredient: 'egg', substitute: 'apple sauce', ratio: 60, notes: 'About 60 g apple sauce per egg. Best in sweet bakes.', substituteUnit: 'g' },
+  { ingredient: 'white sugar', substitute: 'brown sugar', ratio: 1, notes: 'Swaps one-for-one; adds a light molasses note.' },
+  { ingredient: 'brown sugar', substitute: 'white sugar', ratio: 1, notes: 'Add 1 tsp molasses per 100 g if you have it.' },
+  { ingredient: 'honey', substitute: 'maple syrup', ratio: 1, notes: 'Swaps one-for-one.' },
+  { ingredient: 'maple syrup', substitute: 'honey', ratio: 1, notes: 'Swaps one-for-one.' },
+  { ingredient: 'all-purpose flour', substitute: 'bread flour', ratio: 1, notes: 'Slightly chewier result.' },
+  { ingredient: 'bread flour', substitute: 'all-purpose flour', ratio: 1, notes: 'Slightly softer result.' },
+  { ingredient: 'baking powder', substitute: 'baking soda', ratio: 0.25, notes: 'Use ¼ as much soda plus an acid like lemon juice.' },
+  { ingredient: 'cornstarch', substitute: 'flour', ratio: 2, notes: 'Use twice as much flour to thicken.' },
+  { ingredient: 'lemon juice', substitute: 'vinegar', ratio: 1, notes: 'White or cider vinegar works for acidity.' },
+  { ingredient: 'vinegar', substitute: 'lemon juice', ratio: 1, notes: 'Swaps one-for-one for acidity.' },
+  { ingredient: 'garlic powder', substitute: 'garlic', ratio: 4, notes: 'Roughly 1 clove per ⅛ tsp of powder.', substituteUnit: 'each' },
+
+  // Whole fruit standing in for its juice. Ratios are millilitres of juice
+  // per fruit: a lemon gives about 45 ml, a lime 30, an orange 70.
+  { ingredient: 'lemon juice', substitute: 'lemon', ratio: 1 / 45, notes: 'One lemon yields about 45 ml of juice. Roll it firmly before squeezing.', substituteUnit: 'each' },
+  { ingredient: 'lime juice', substitute: 'lime', ratio: 1 / 30, notes: 'One lime yields about 30 ml of juice.', substituteUnit: 'each' },
+  { ingredient: 'orange juice', substitute: 'orange', ratio: 1 / 70, notes: 'One orange yields about 70 ml of juice.', substituteUnit: 'each' },
+  { ingredient: 'lemon zest', substitute: 'lemon', ratio: 1 / 6, notes: 'One lemon gives about 6 g of zest. Zest before juicing.', substituteUnit: 'each' },
 ];
 
+/**
+ * Inserts any starter substitution that isn't already present. Runs on every
+ * launch rather than only on a fresh database, so pantries created before a
+ * row existed still pick it up.
+ */
 async function seedSubstitutions(db: SQLiteDatabase) {
-  const existing = await db.getFirstAsync<{ count: number }>(
-    'SELECT COUNT(*) AS count FROM substitutions'
-  );
-  if ((existing?.count ?? 0) > 0) return;
-
-  for (const [ingredient, substitute, ratio, notes] of STARTER_SUBSTITUTIONS) {
+  for (const { ingredient, substitute, ratio, notes, substituteUnit } of STARTER_SUBSTITUTIONS) {
+    const existing = await db.getFirstAsync<{ id: number }>(
+      'SELECT id FROM substitutions WHERE ingredient = ? AND substitute = ?',
+      ingredient,
+      substitute
+    );
+    if (existing) continue;
     await db.runAsync(
-      'INSERT INTO substitutions (ingredient, substitute, ratio, notes) VALUES (?, ?, ?, ?)',
+      'INSERT INTO substitutions (ingredient, substitute, ratio, notes, substitute_unit) VALUES (?, ?, ?, ?, ?)',
       ingredient,
       substitute,
       ratio,
-      notes
+      notes,
+      substituteUnit ?? null
     );
   }
 }

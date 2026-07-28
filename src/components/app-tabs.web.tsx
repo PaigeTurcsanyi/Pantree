@@ -21,17 +21,8 @@ export default function AppTabs() {
         options={{
           title: 'Pantry',
           tabBarIcon: ({ color, size }) => (
-            <SymbolView name={{ ios: 'basket', web: 'shopping_basket' }} tintColor={color} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="import"
-        options={{
-          title: 'Import',
-          tabBarIcon: ({ color, size }) => (
             <SymbolView
-              name={{ ios: 'camera.viewfinder', web: 'document_scanner' }}
+              name={{ ios: 'basket', web: 'shopping_basket' }}
               tintColor={color}
               size={size}
             />
@@ -48,20 +39,15 @@ export default function AppTabs() {
         }}
       />
       <Tabs.Screen
-        name="make"
-        options={{
-          title: 'Can I Make?',
-          tabBarIcon: ({ color, size }) => (
-            <SymbolView name={{ ios: 'fork.knife', web: 'restaurant' }} tintColor={color} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="settings"
         options={{
           title: 'Settings',
           tabBarIcon: ({ color, size }) => (
-            <SymbolView name={{ ios: 'gearshape', web: 'settings' }} tintColor={color} size={size} />
+            <SymbolView
+              name={{ ios: 'gearshape', web: 'settings' }}
+              tintColor={color}
+              size={size}
+            />
           ),
         }}
       />

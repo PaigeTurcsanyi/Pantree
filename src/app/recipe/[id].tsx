@@ -328,7 +328,8 @@ function IngredientRow({ check }: { check: IngredientCheck }) {
       {swap && (
         <ThemedView type="backgroundElement" style={styles.substitute}>
           <ThemedText type="small" style={styles.substituteText}>
-            Swap: {formatQuantity(swap.amount, ingredient.unit)} {swap.item.name}
+            Swap: {formatQuantity(swap.amount, swap.unit)}
+            {swap.unit === 'each' ? ` × ${swap.item.name}` : ` ${swap.item.name}`}
           </ThemedText>
           {swap.substitution.notes ? (
             <ThemedText type="small" themeColor="textSecondary">

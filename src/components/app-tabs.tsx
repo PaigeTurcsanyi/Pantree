@@ -17,19 +17,9 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Icon sf="basket" />
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="import">
-        <NativeTabs.Trigger.Label>Import</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="camera.viewfinder" />
-      </NativeTabs.Trigger>
-
       <NativeTabs.Trigger name="recipes">
         <NativeTabs.Trigger.Label>Recipes</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="book" />
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="make">
-        <NativeTabs.Trigger.Label>Can I Make?</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="fork.knife" />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="settings">

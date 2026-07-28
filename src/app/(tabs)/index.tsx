@@ -41,11 +41,18 @@ export default function PantryScreen() {
     <ThemedView style={[styles.container, { paddingTop: insets.top + 16 }]}>
       <ThemedView style={styles.header}>
         <ThemedText type="subtitle">Pantry</ThemedText>
-        <Pressable
-          onPress={() => router.push('/item/new')}
-          style={[styles.addButton, { backgroundColor: theme.backgroundElement }]}>
-          <ThemedText type="smallBold">+ Add item</ThemedText>
-        </Pressable>
+        <ThemedView style={styles.headerButtons}>
+          <Pressable
+            onPress={() => router.push('/import')}
+            style={[styles.addButton, { backgroundColor: theme.backgroundElement }]}>
+            <ThemedText type="smallBold">Import</ThemedText>
+          </Pressable>
+          <Pressable
+            onPress={() => router.push('/item/new')}
+            style={[styles.addButton, { backgroundColor: theme.backgroundElement }]}>
+            <ThemedText type="smallBold">+ Add</ThemedText>
+          </Pressable>
+        </ThemedView>
       </ThemedView>
 
       <TextInput
@@ -135,6 +142,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 8,
   },
   addButton: {
     paddingVertical: 8,
