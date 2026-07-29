@@ -22,7 +22,7 @@ type IngredientDraft = {
 const emptyIngredient = (): IngredientDraft => ({ name: '', amount: '', unit: 'g' });
 
 export default function RecipeEditScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, import: importParam } = useLocalSearchParams<{ id: string; import?: string }>();
   const isNew = id === 'new';
   const recipeId = isNew ? null : Number(id);
 
@@ -107,6 +107,14 @@ export default function RecipeEditScreen() {
       setReading(false);
     }
   };
+
+  // Arriving from the "From a screenshot" option opens the picker straight
+  // away, so that path doesn't dump you on an empty form.
+  useEffect(() => {
+    if (importParam === '1') void importFromScreenshot();
+    // Deliberately runs once, on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [importParam]);
 
   const pickPhoto = async () => {
     const picked = await ImagePicker.launchImageLibraryAsync({

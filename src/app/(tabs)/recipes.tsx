@@ -85,7 +85,7 @@ export default function RecipesScreen() {
         <IconButton
           icon="add"
           variant="accent"
-          onPress={() => router.push('/recipe/edit/new')}
+          onPress={() => router.push('/recipe/add')}
           accessibilityLabel="Add a recipe"
         />
       </View>
@@ -203,7 +203,7 @@ function emptyMessage(filter: Filter, search: string): string {
   if (search) return `No recipes match “${search}”.`;
   if (filter === 'ready') return 'Nothing you can make right now. Check “Almost”.';
   if (filter === 'almost') return 'Nothing close by. Add a few pantry items.';
-  return 'No recipes yet. Tap “+ Add” to write one down or import a screenshot.';
+  return 'No recipes yet. Tap + to write one down, read a screenshot, or browse the starter recipes.';
 }
 
 const styles = StyleSheet.create({

@@ -69,8 +69,11 @@ export function findMatch(ingredient: RecipeIngredient, pantry: PantryItem[]): P
   let bestScore = 0;
   for (const item of pantry) {
     if (!unitsCompatible(ingredient.unit, item.unit)) continue;
+    // Require one name to contain the other. A single shared word is not
+    // enough: "frozen peas" and "frozen fruit mango" are not the same thing,
+    // and a wrong match here silently deducts from the wrong item.
     const score = matchScore(ingredient.name, item.name);
-    if (score > bestScore) {
+    if (score >= NAME_CONTAINMENT_SCORE && score > bestScore) {
       best = item;
       bestScore = score;
     }
