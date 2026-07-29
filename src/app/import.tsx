@@ -10,6 +10,7 @@ import { parseGroceryScreenshot } from '@/api/gemini';
 import { toReviewItem } from '@/api/vision';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { useTheme } from '@/hooks/use-theme';
 import { getGeminiApiKey } from '@/db/settings';
 import { setImportDraft } from '@/state/import-draft';
 
@@ -23,6 +24,7 @@ export default function ImportScreen() {
   const db = useSQLiteContext();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const theme = useTheme();
   const [image, setImage] = useState<PickedImage | null>(null);
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState('');
@@ -117,7 +119,7 @@ export default function ImportScreen() {
         )}
 
         {error ? (
-          <ThemedText type="smallBold" style={styles.error}>
+          <ThemedText type="smallBold" style={[styles.error, { color: theme.danger }]}>
             {error}
           </ThemedText>
         ) : null}
@@ -154,6 +156,5 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   error: {
-    color: '#e5484d',
   },
 });

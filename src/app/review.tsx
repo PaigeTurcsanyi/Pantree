@@ -201,13 +201,13 @@ export default function ReviewScreen() {
               ))}
             </ThemedView>
             {duplicates[index] && (
-              <ThemedText type="small" style={styles.mergeNote}>
+              <ThemedText type="small" style={[styles.mergeNote, { color: theme.warn }]}>
                 Tops up “{duplicates[index].name}” — already have{' '}
                 {formatQuantity(duplicates[index].quantity, duplicates[index].unit)}
               </ThemedText>
             )}
             <Pressable onPress={() => remove(index)}>
-              <ThemedText type="small" style={styles.removeText}>
+              <ThemedText type="small" style={[styles.removeText, { color: theme.danger }]}>
                 Remove
               </ThemedText>
             </Pressable>
@@ -215,7 +215,7 @@ export default function ReviewScreen() {
         ))}
 
         {error ? (
-          <ThemedText type="smallBold" style={styles.removeText}>
+          <ThemedText type="smallBold" style={[styles.removeText, { color: theme.danger }]}>
             {error}
           </ThemedText>
         ) : null}
@@ -275,10 +275,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   mergeNote: {
-    color: '#f5a524',
   },
   removeText: {
-    color: '#e5484d',
     textAlign: 'center',
     paddingVertical: 2,
   },

@@ -276,7 +276,7 @@ export default function ItemScreen() {
         {nutrition && <NutritionPanel nutrition={nutrition} />}
 
         {error ? (
-          <ThemedText type="smallBold" style={styles.error}>
+          <ThemedText type="smallBold" style={[styles.error, { color: theme.danger }]}>
             {error}
           </ThemedText>
         ) : null}
@@ -299,7 +299,7 @@ export default function ItemScreen() {
           ) : (
             <Pressable onPress={() => setConfirmingDelete(true)}>
               <ThemedView type="backgroundElement" style={styles.deleteButton}>
-                <ThemedText type="smallBold" style={styles.deleteText}>
+                <ThemedText type="smallBold" style={[styles.deleteText, { color: theme.danger }]}>
                   Delete item
                 </ThemedText>
               </ThemedView>
@@ -426,7 +426,7 @@ const styles = StyleSheet.create({
   },
   nutritionRowBorder: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(128,128,128,0.3)',
+    borderTopColor: 'transparent',
   },
   nutritionSubLabel: {
     paddingLeft: 12,
@@ -495,7 +495,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   error: {
-    color: '#e5484d',
   },
   saveButton: {
     marginTop: 10,
@@ -509,6 +508,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   deleteText: {
-    color: '#e5484d',
   },
 });

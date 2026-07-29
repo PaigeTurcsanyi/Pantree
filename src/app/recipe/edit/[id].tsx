@@ -193,7 +193,7 @@ export default function RecipeEditScreen() {
               </Pressable>
               <Pressable onPress={() => setPhotoUrl(null)}>
                 <ThemedView type="backgroundElement" style={styles.smallButton}>
-                  <ThemedText type="small" style={styles.removeText}>
+                  <ThemedText type="small" style={[styles.removeText, { color: theme.danger }]}>
                     Remove
                   </ThemedText>
                 </ThemedView>
@@ -272,7 +272,7 @@ export default function RecipeEditScreen() {
             {ingredients.length > 1 && (
               <Pressable
                 onPress={() => setIngredients((prev) => prev.filter((_, i) => i !== index))}>
-                <ThemedText type="small" style={styles.removeText}>
+                <ThemedText type="small" style={[styles.removeText, { color: theme.danger }]}>
                   Remove
                 </ThemedText>
               </Pressable>
@@ -305,7 +305,7 @@ export default function RecipeEditScreen() {
             />
             {steps.length > 1 && (
               <Pressable onPress={() => setSteps((prev) => prev.filter((_, i) => i !== index))}>
-                <ThemedText type="small" style={styles.removeText}>
+                <ThemedText type="small" style={[styles.removeText, { color: theme.danger }]}>
                   ✕
                 </ThemedText>
               </Pressable>
@@ -331,7 +331,7 @@ export default function RecipeEditScreen() {
         />
 
         {error ? (
-          <ThemedText type="smallBold" style={styles.removeText}>
+          <ThemedText type="smallBold" style={[styles.removeText, { color: theme.danger }]}>
             {error}
           </ThemedText>
         ) : null}
@@ -426,7 +426,6 @@ const styles = StyleSheet.create({
     minHeight: 70,
   },
   removeText: {
-    color: '#e5484d',
     textAlign: 'center',
     paddingVertical: 4,
     paddingHorizontal: 6,

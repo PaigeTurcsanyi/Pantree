@@ -2,6 +2,7 @@ import { Pressable, StyleSheet } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { useTheme } from '@/hooks/use-theme';
 
 /**
  * In-app confirmation. Deliberately not window.confirm or Alert.alert:
@@ -21,6 +22,8 @@ export function ConfirmPanel({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const theme = useTheme();
+
   return (
     <ThemedView type="backgroundElement" style={styles.panel}>
       <ThemedText type="small">{message}</ThemedText>
@@ -32,7 +35,7 @@ export function ConfirmPanel({
         </Pressable>
         <Pressable onPress={onConfirm} style={styles.buttonWrap}>
           <ThemedView type="backgroundSelected" style={styles.button}>
-            <ThemedText type="smallBold" style={destructive ? styles.destructive : undefined}>
+            <ThemedText type="smallBold" style={destructive ? { color: theme.danger } : undefined}>
               {confirmLabel}
             </ThemedText>
           </ThemedView>
@@ -62,6 +65,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   destructive: {
-    color: '#e5484d',
   },
 });

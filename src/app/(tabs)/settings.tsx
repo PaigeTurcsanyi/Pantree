@@ -133,7 +133,7 @@ export default function SettingsScreen() {
         {savedKey && (
           <Pressable onPress={clearKey}>
             <ThemedView type="backgroundElement" style={styles.button}>
-              <ThemedText type="smallBold" style={styles.removeText}>
+              <ThemedText type="smallBold" style={[styles.removeText, { color: theme.danger }]}>
                 Remove saved key
               </ThemedText>
             </ThemedView>
@@ -204,7 +204,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   removeText: {
-    color: '#e5484d',
   },
   section: {
     marginTop: 24,
