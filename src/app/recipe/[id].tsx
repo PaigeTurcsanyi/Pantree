@@ -28,6 +28,7 @@ import {
   setRecipeFavorite,
   updateRecipe,
 } from '@/db/recipes';
+import { starterImageFor } from '@/data/starter-recipes';
 import { listSubstitutions } from '@/db/substitutions';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -80,6 +81,9 @@ export default function RecipeDetailScreen() {
   };
 
   const fitScale = check && scale === 1 ? suggestScale(check) : null;
+
+  // Your own photo wins; otherwise fall back to the bundled starter art.
+  const heroSource = recipe?.photo_url ?? (recipe ? starterImageFor(recipe.title) : undefined);
 
   const leaveScreen = () => {
     if (router.canGoBack()) router.back();
@@ -171,8 +175,8 @@ export default function RecipeDetailScreen() {
           start={{ x: 0.2, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.hero}>
-          {recipe.photo_url ? (
-            <Image source={recipe.photo_url} style={styles.heroImage} contentFit="cover" />
+          {heroSource ? (
+            <Image source={heroSource} style={styles.heroImage} contentFit="cover" />
           ) : (
             <Icon name={foodIconFor(recipe.title)} size={74} color="rgba(246,241,231,0.28)" />
           )}

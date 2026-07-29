@@ -12,6 +12,7 @@ import { Radius, Shadows, Spacing } from '@/constants/theme';
 import { checkIngredients, RecipeCheck } from '@/db/cooking';
 import { listPantryItems } from '@/db/pantry';
 import { getRecipe, listRecipes, Recipe } from '@/db/recipes';
+import { starterImageFor } from '@/data/starter-recipes';
 import { listSubstitutions } from '@/db/substitutions';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -155,10 +156,12 @@ function RecipeRow({ item, onPress }: { item: Evaluated; onPress: () => void }) 
           ]}>
           <ProductTile
             photoUrl={item.photo_url}
+            imageSource={starterImageFor(item.title)}
             name={item.title}
             style={styles.thumbnail}
             iconSize={28}
             radius={Radius.thumbnail}
+            contentFit="cover"
           />
           <View style={styles.rowText}>
             <ThemedText type="cardTitle" numberOfLines={1}>

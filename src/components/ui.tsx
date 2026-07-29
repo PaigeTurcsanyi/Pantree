@@ -1,6 +1,13 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Pressable, StyleSheet, TextInput, View, type ViewStyle } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  TextInput,
+  View,
+  type ImageSourcePropType,
+  type ViewStyle,
+} from 'react-native';
 
 import { foodIconFor, Icon } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
@@ -122,22 +129,28 @@ export function Pill({
  */
 export function ProductTile({
   photoUrl,
+  imageSource,
   name,
   category,
   style,
   iconSize = 42,
   radius = Radius.tile,
+  contentFit = 'contain',
   children,
 }: {
   photoUrl?: string | null;
+  /** Bundled image, used when there's no photo_url of your own. */
+  imageSource?: ImageSourcePropType;
   name: string;
   category?: string | null;
   style?: ViewStyle;
   iconSize?: number;
   radius?: number;
+  contentFit?: 'contain' | 'cover';
   children?: React.ReactNode;
 }) {
   const theme = useTheme();
+  const source = photoUrl ?? imageSource;
 
   return (
     <LinearGradient
@@ -145,8 +158,13 @@ export function ProductTile({
       start={{ x: 0.2, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={[styles.tile, { borderRadius: radius }, style]}>
-      {photoUrl ? (
-        <Image source={photoUrl} style={styles.tileImage} contentFit="contain" transition={150} />
+      {source ? (
+        <Image
+          source={source}
+          style={styles.tileImage}
+          contentFit={photoUrl ? contentFit : 'cover'}
+          transition={150}
+        />
       ) : (
         <Icon name={foodIconFor(name, category)} size={iconSize} color={theme.accent} />
       )}

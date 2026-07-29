@@ -21,10 +21,25 @@ export type StarterRecipe = {
   image?: ImageSourcePropType;
 };
 
+/**
+ * The bundled picture for a recipe, looked up by title.
+ *
+ * Bundled images are module references, not URLs, so they can't live in the
+ * `photo_url` column — resolving one to a URI would store a dev-server path
+ * that breaks in a real build. Copying a starter recipe into your book
+ * therefore leaves `photo_url` empty, and the art is matched back on here at
+ * render time. Your own photos still take priority.
+ */
+export function starterImageFor(title: string): ImageSourcePropType | undefined {
+  const key = title.trim().toLowerCase();
+  return STARTER_RECIPES.find((recipe) => recipe.title.toLowerCase() === key)?.image;
+}
+
 export const STARTER_RECIPES: StarterRecipe[] = [
   {
     title: 'Yummy fried rice',
     servings: 4,
+    image: require('@/../assets/images/recipes/fried-rice.jpg'),
     ingredients: [
       { name: 'Jasmine rice', amount: 400, unit: 'g' },
       { name: 'Eggs', amount: 4, unit: 'each' },
