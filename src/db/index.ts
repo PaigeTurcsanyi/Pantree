@@ -86,6 +86,7 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   // and every INSERT would fail on the missing column.
   await addColumnIfMissing(db, 'pantry_items', 'nutrition', 'TEXT');
   await addColumnIfMissing(db, 'recipes', 'photo_url', 'TEXT');
+  await addColumnIfMissing(db, 'recipes', 'is_favorite', 'INTEGER NOT NULL DEFAULT 0');
   await addColumnIfMissing(db, 'substitutions', 'substitute_unit', 'TEXT');
   // What the item held when it was last stocked, so the level bar can show
   // how much is left rather than just a raw number.

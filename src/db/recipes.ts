@@ -13,6 +13,8 @@ export type Recipe = {
   steps: string;
   notes: string | null;
   photo_url: string | null;
+  /** SQLite has no boolean; 0 or 1. */
+  is_favorite: number;
 };
 
 export type RecipeIngredient = {
@@ -105,6 +107,14 @@ export async function updateRecipe(
     await db.runAsync('DELETE FROM recipe_ingredients WHERE recipe_id = ?', id);
     await insertIngredients(db, id, input.ingredients);
   });
+}
+
+export async function setRecipeFavorite(
+  db: SQLiteDatabase,
+  id: number,
+  favorite: boolean
+): Promise<void> {
+  await db.runAsync('UPDATE recipes SET is_favorite = ? WHERE id = ?', favorite ? 1 : 0, id);
 }
 
 export async function deleteRecipe(db: SQLiteDatabase, id: number): Promise<void> {

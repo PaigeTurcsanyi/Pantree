@@ -1,12 +1,14 @@
-import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, TextInput } from 'react-native';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Icon } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { IconButton, Pill, ProductTile, SearchField } from '@/components/ui';
+import { Radius, Shadows, Spacing } from '@/constants/theme';
 import { checkIngredients, RecipeCheck } from '@/db/cooking';
 import { listPantryItems } from '@/db/pantry';
 import { getRecipe, listRecipes, Recipe } from '@/db/recipes';
@@ -72,26 +74,25 @@ export default function RecipesScreen() {
   });
 
   return (
-    <ThemedView style={[styles.container, { paddingTop: insets.top + 16 }]}>
-      <ThemedView style={styles.header}>
-        <ThemedText type="subtitle">Recipes</ThemedText>
-        <Pressable
+    <ThemedView style={[styles.container, { paddingTop: insets.top + 12 }]}>
+      <View style={styles.header}>
+        <View style={styles.headerText}>
+          <ThemedText type="subtitle">Recipes</ThemedText>
+          <ThemedText type="meta" themeColor="textSecondary">
+            Cook down your pantry before it wilts
+          </ThemedText>
+        </View>
+        <IconButton
+          icon="add"
+          variant="accent"
           onPress={() => router.push('/recipe/edit/new')}
-          style={[styles.addButton, { backgroundColor: theme.backgroundElement }]}>
-          <ThemedText type="smallBold">+ Add</ThemedText>
-        </Pressable>
-      </ThemedView>
+          accessibilityLabel="Add a recipe"
+        />
+      </View>
 
-      <TextInput
-        value={search}
-        onChangeText={setSearch}
-        placeholder="Search recipes"
-        placeholderTextColor={theme.textSecondary}
-        autoCorrect={false}
-        style={[styles.search, { backgroundColor: theme.backgroundElement, color: theme.text }]}
-      />
+      <SearchField value={search} onChangeText={setSearch} placeholder="Search recipes" />
 
-      <ThemedView style={styles.filterRow}>
+      <View style={styles.filterRow}>
         {FILTERS.map(({ key, label }) => {
           const count =
             key === 'all'
@@ -106,48 +107,24 @@ export default function RecipesScreen() {
                 }).length;
 
           return (
-            <Pressable key={key} onPress={() => setFilter(key)}>
-              <ThemedView
-                type={filter === key ? 'backgroundSelected' : 'backgroundElement'}
-                style={styles.filterPill}>
-                <ThemedText type={filter === key ? 'smallBold' : 'small'}>
-                  {label} {count}
-                </ThemedText>
-              </ThemedView>
-            </Pressable>
+            <Pill
+              key={key}
+              label={`${label} · ${count}`}
+              active={filter === key}
+              tone={key === 'ready' ? 'success' : 'default'}
+              icon={key === 'ready' ? 'eco' : undefined}
+              onPress={() => setFilter(key)}
+            />
           );
         })}
-      </ThemedView>
+      </View>
 
       <FlatList
         data={visible}
         keyExtractor={(recipe) => String(recipe.id)}
         contentContainerStyle={visible.length === 0 ? styles.emptyList : styles.list}
         renderItem={({ item }) => (
-          <Pressable onPress={() => router.push(`/recipe/${item.id}`)}>
-            {({ pressed }) => (
-              <ThemedView
-                type={pressed ? 'backgroundSelected' : 'backgroundElement'}
-                style={styles.row}>
-                {item.photo_url ? (
-                  <Image
-                    source={item.photo_url}
-                    style={styles.thumbnail}
-                    contentFit="cover"
-                    transition={150}
-                  />
-                ) : null}
-                <ThemedView
-                  type={pressed ? 'backgroundSelected' : 'backgroundElement'}
-                  style={styles.rowText}>
-                  <ThemedText>{item.title}</ThemedText>
-                  <ThemedText type="small" style={statusStyle(item.check)}>
-                    {statusLabel(item.check)}
-                  </ThemedText>
-                </ThemedView>
-              </ThemedView>
-            )}
-          </Pressable>
+          <RecipeRow item={item} onPress={() => router.push(`/recipe/${item.id}`)} />
         )}
         ListEmptyComponent={
           loaded ? (
@@ -161,6 +138,58 @@ export default function RecipesScreen() {
   );
 }
 
+function RecipeRow({ item, onPress }: { item: Evaluated; onPress: () => void }) {
+  const theme = useTheme();
+  const tone = statusTone(item.check);
+  const color =
+    tone === 'ok' ? theme.success : tone === 'warn' ? theme.warn : theme.textMuted;
+
+  return (
+    <Pressable onPress={onPress}>
+      {({ pressed }) => (
+        <View
+          style={[
+            styles.row,
+            { backgroundColor: theme.surface, borderColor: theme.hairline },
+            pressed && styles.rowPressed,
+          ]}>
+          <ProductTile
+            photoUrl={item.photo_url}
+            name={item.title}
+            style={styles.thumbnail}
+            iconSize={28}
+            radius={Radius.thumbnail}
+          />
+          <View style={styles.rowText}>
+            <ThemedText type="cardTitle" numberOfLines={1}>
+              {item.title}
+            </ThemedText>
+            {item.servings ? (
+              <ThemedText type="meta" themeColor="textMuted">
+                Serves {item.servings}
+              </ThemedText>
+            ) : null}
+            <View style={styles.statusRow}>
+              <Icon name="circle" size={11} color={color} />
+              <ThemedText type="meta" style={[styles.statusText, { color }]} numberOfLines={1}>
+                {statusLabel(item.check)}
+              </ThemedText>
+            </View>
+          </View>
+          <Icon name="chevron_right" size={20} color={theme.chevron} />
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+function statusTone(check: RecipeCheck | null): 'ok' | 'warn' | 'muted' {
+  if (!check) return 'muted';
+  if (check.canMake) return 'ok';
+  if (check.canMakeWithSubstitutes || check.problems.length <= 2) return 'warn';
+  return 'muted';
+}
+
 function statusLabel(check: RecipeCheck | null): string {
   if (!check) return 'No ingredients yet';
   if (check.canMake) return 'You have everything';
@@ -168,13 +197,6 @@ function statusLabel(check: RecipeCheck | null): string {
   const missing = check.problems.map((p) => p.ingredient.name);
   if (missing.length <= 2) return `Need ${missing.join(' and ')}`;
   return `Missing ${missing.length} ingredients`;
-}
-
-function statusStyle(check: RecipeCheck | null) {
-  if (!check) return styles.mutedStatus;
-  if (check.canMake) return styles.okStatus;
-  if (check.canMakeWithSubstitutes || check.problems.length <= 2) return styles.warnStatus;
-  return styles.mutedStatus;
 }
 
 function emptyMessage(filter: Filter, search: string): string {
@@ -187,39 +209,29 @@ function emptyMessage(filter: Filter, search: string): string {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 20,
+    paddingHorizontal: Spacing.screen,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    alignItems: 'flex-start',
+    gap: Spacing.three,
+    marginBottom: Spacing.three,
   },
-  addButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-  },
-  search: {
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    fontSize: 16,
-    marginBottom: 10,
+  headerText: {
+    flex: 1,
+    gap: 2,
   },
   filterRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
-  },
-  filterPill: {
-    paddingVertical: 7,
-    paddingHorizontal: 14,
-    borderRadius: 10,
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+    marginTop: Spacing.three,
   },
   list: {
-    gap: 8,
-    paddingBottom: 24,
+    gap: Spacing.row,
+    paddingTop: Spacing.three,
+    paddingBottom: Spacing.five,
   },
   emptyList: {
     flexGrow: 1,
@@ -227,31 +239,36 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     textAlign: 'center',
+    paddingHorizontal: Spacing.four,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    gap: 12,
+    borderRadius: Radius.card,
+    borderWidth: 1,
+    padding: 12,
+    gap: 14,
+    ...Shadows.card,
+  },
+  rowPressed: {
+    opacity: 0.85,
   },
   rowText: {
     flex: 1,
     gap: 2,
   },
   thumbnail: {
-    width: 48,
-    height: 48,
-    borderRadius: 8,
+    width: 60,
+    height: 60,
   },
-  okStatus: {
-    color: '#30a46c',
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 1,
   },
-  warnStatus: {
-    color: '#f5a524',
-  },
-  mutedStatus: {
-    color: '#8b8d90',
+  statusText: {
+    flex: 1,
+    fontWeight: '700',
   },
 });

@@ -1,12 +1,18 @@
 import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ConfirmPanel } from '@/components/confirm-panel';
+import { foodIconFor, Icon } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { IconButton, Pill } from '@/components/ui';
+import { Radius, Shadows, Spacing } from '@/constants/theme';
 import {
   checkIngredients,
   deductRecipe,
@@ -15,14 +21,26 @@ import {
   suggestScale,
 } from '@/db/cooking';
 import { formatQuantity, listPantryItems } from '@/db/pantry';
-import { deleteRecipe, getRecipe, RecipeWithIngredients } from '@/db/recipes';
+import {
+  deleteRecipe,
+  getRecipe,
+  RecipeWithIngredients,
+  setRecipeFavorite,
+  updateRecipe,
+} from '@/db/recipes';
 import { listSubstitutions } from '@/db/substitutions';
+import { useTheme } from '@/hooks/use-theme';
+
+const HERO_HEIGHT = 224;
 
 export default function RecipeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const recipeId = Number(id);
   const db = useSQLiteContext();
   const router = useRouter();
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
+
   const [recipe, setRecipe] = useState<RecipeWithIngredients | null>(null);
   const [check, setCheck] = useState<RecipeCheck | null>(null);
   const [scale, setScale] = useState(1);
@@ -61,13 +79,16 @@ export default function RecipeDetailScreen() {
     void load(next);
   };
 
-  // Suggested "fit my pantry" scale, always measured against a full batch.
   const fitScale = check && scale === 1 ? suggestScale(check) : null;
+
+  const leaveScreen = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/recipes');
+  };
 
   const doDelete = async () => {
     await deleteRecipe(db, recipeId);
-    if (router.canGoBack()) router.back();
-    else router.replace('/recipes');
+    leaveScreen();
   };
 
   const doDeduct = async () => {
@@ -83,7 +104,34 @@ export default function RecipeDetailScreen() {
     );
   };
 
-  /** Preview of exactly what "I made this" will change. */
+  const toggleFavorite = async () => {
+    if (!recipe) return;
+    await setRecipeFavorite(db, recipeId, !recipe.is_favorite);
+    await load(scale);
+  };
+
+  const changePhoto = async () => {
+    if (!recipe) return;
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+    });
+    if (picked.canceled) return;
+    await updateRecipe(db, recipeId, {
+      title: recipe.title,
+      servings: recipe.servings,
+      steps: recipe.steps,
+      notes: recipe.notes,
+      photo_url: picked.assets[0].uri,
+      ingredients: recipe.ingredients.map((i) => ({
+        name: i.name,
+        amount: i.amount,
+        unit: i.unit,
+      })),
+    });
+    await load(scale);
+  };
+
   const deductionPreview = () => {
     if (!check) return '';
     const lines = check.checks
@@ -103,7 +151,7 @@ export default function RecipeDetailScreen() {
   if (!recipe) {
     return (
       <ThemedView style={styles.container}>
-        <Stack.Screen options={{ title: 'Recipe' }} />
+        <Stack.Screen options={{ headerShown: true, title: 'Recipe' }} />
         {loaded && (
           <ThemedText themeColor="textSecondary" style={styles.missing}>
             This recipe no longer exists.
@@ -115,150 +163,229 @@ export default function RecipeDetailScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <Stack.Screen options={{ title: recipe.title }} />
-      <ScrollView contentContainerStyle={styles.content}>
-        {recipe.photo_url ? (
-          <Image source={recipe.photo_url} style={styles.hero} contentFit="cover" transition={150} />
-        ) : null}
+      <Stack.Screen options={{ headerShown: false }} />
 
-        <ThemedText type="subtitle">{recipe.title}</ThemedText>
-        {recipe.servings ? (
-          <ThemedText type="small" themeColor="textSecondary">
-            Serves {formatNumber(recipe.servings * scale)}
-            {scale !== 1 ? ` (${formatNumber(recipe.servings)} at full batch)` : ''}
-          </ThemedText>
-        ) : null}
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <LinearGradient
+          colors={[theme.heroTop, theme.heroBottom]}
+          start={{ x: 0.2, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.hero}>
+          {recipe.photo_url ? (
+            <Image source={recipe.photo_url} style={styles.heroImage} contentFit="cover" />
+          ) : (
+            <Icon name={foodIconFor(recipe.title)} size={74} color="rgba(246,241,231,0.28)" />
+          )}
 
-        {check && <MakeStatus check={check} />}
+          <View style={[styles.heroBar, { paddingTop: insets.top + 10 }]}>
+            <IconButton
+              icon="arrow_back"
+              variant="translucent"
+              size={38}
+              onPress={leaveScreen}
+              accessibilityLabel="Go back"
+            />
+            <View style={styles.heroActions}>
+              <IconButton
+                icon={recipe.is_favorite ? 'favorite_filled' : 'favorite'}
+                variant="translucent"
+                size={38}
+                onPress={toggleFavorite}
+                accessibilityLabel={
+                  recipe.is_favorite ? 'Remove from favourites' : 'Add to favourites'
+                }
+              />
+              <IconButton
+                icon="add_a_photo"
+                variant="translucent"
+                size={38}
+                onPress={changePhoto}
+                accessibilityLabel="Change recipe photo"
+              />
+            </View>
+          </View>
+        </LinearGradient>
 
-        {recipe.ingredients.length > 0 && (
-          <ThemedView style={styles.scaleRow}>
-            <ThemedText type="small" themeColor="textSecondary">
-              Batch
-            </ThemedText>
-            {[0.5, 1, 2].map((option) => (
-              <Pressable key={option} onPress={() => applyScale(option)}>
-                <ThemedView
-                  type={scale === option ? 'backgroundSelected' : 'backgroundElement'}
-                  style={styles.scalePill}>
-                  <ThemedText type={scale === option ? 'smallBold' : 'small'}>
-                    {formatNumber(option)}×
+        <View style={[styles.sheet, { backgroundColor: theme.background }]}>
+          <ThemedText type="displaySmall">{recipe.title}</ThemedText>
+
+          {recipe.servings ? (
+            <View style={styles.metaRow}>
+              <Icon name="restaurant" size={15} color={theme.textSecondary} />
+              <ThemedText type="meta" themeColor="textSecondary">
+                Serves {formatNumber(recipe.servings * scale)}
+                {scale !== 1 ? ` at ${formatNumber(scale)}×` : ''}
+              </ThemedText>
+            </View>
+          ) : null}
+
+          {check && <MakeStatus check={check} />}
+
+          {fitScale !== null && (
+            <Pressable onPress={() => applyScale(fitScale)}>
+              <View
+                style={[
+                  styles.fitBanner,
+                  { backgroundColor: theme.warnSoft, borderColor: theme.warnSoftBorder },
+                ]}>
+                <Icon name="nutrition" size={24} color={theme.warn} />
+                <View style={styles.fitText}>
+                  <ThemedText type="meta" style={[styles.fitTitle, { color: theme.warnText }]}>
+                    You’re short — scale to {formatNumber(fitScale)}×?
                   </ThemedText>
-                </ThemedView>
-              </Pressable>
-            ))}
-            {scale !== 1 && ![0.5, 2].includes(scale) && (
-              <ThemedView type="backgroundSelected" style={styles.scalePill}>
-                <ThemedText type="smallBold">{formatNumber(scale)}×</ThemedText>
-              </ThemedView>
-            )}
-          </ThemedView>
-        )}
+                  <ThemedText type="meta" style={{ color: theme.warnTextSoft }}>
+                    Every amount recalculates so the ratios stay right.
+                  </ThemedText>
+                </View>
+                <View style={[styles.scaleAction, { backgroundColor: theme.warn }]}>
+                  <ThemedText type="chip" style={styles.scaleActionText}>
+                    Scale
+                  </ThemedText>
+                </View>
+              </View>
+            </Pressable>
+          )}
 
-        {fitScale !== null && (
-          <Pressable onPress={() => applyScale(fitScale)}>
-            <ThemedView type="backgroundElement" style={styles.fitBanner}>
-              <ThemedText type="smallBold" style={styles.warnText}>
-                Scale down to {formatNumber(fitScale)}× to fit your pantry
+          <View style={styles.sectionHeader}>
+            <ThemedText type="sectionLabel" themeColor="textMuted">
+              Ingredients
+            </ThemedText>
+            <View style={styles.batchRow}>
+              <ThemedText type="meta" themeColor="textSecondary">
+                Batch
+              </ThemedText>
+              {[0.5, 1, 2].map((option) => (
+                <Pill
+                  key={option}
+                  label={`${formatNumber(option)}×`}
+                  active={scale === option}
+                  onPress={() => applyScale(option)}
+                />
+              ))}
+              {scale !== 1 && ![0.5, 2].includes(scale) && (
+                <Pill label={`${formatNumber(scale)}×`} active />
+              )}
+            </View>
+          </View>
+
+          {recipe.ingredients.length === 0 ? (
+            <ThemedText type="meta" themeColor="textMuted">
+              No ingredients listed.
+            </ThemedText>
+          ) : (
+            <View
+              style={[
+                styles.card,
+                { backgroundColor: theme.surface, borderColor: theme.hairline },
+              ]}>
+              {(check?.checks ?? []).map((item, index) => (
+                <IngredientRow key={item.ingredient.id} check={item} first={index === 0} />
+              ))}
+            </View>
+          )}
+
+          {recipe.steps.length > 0 && (
+            <>
+              <ThemedText
+                type="sectionLabel"
+                themeColor="textMuted"
+                style={styles.sectionSpacing}>
+                Method
+              </ThemedText>
+              <View style={styles.steps}>
+                {recipe.steps.map((step, index) => (
+                  <View key={index} style={styles.stepRow}>
+                    <View style={[styles.stepChip, { backgroundColor: theme.successSoft }]}>
+                      <ThemedText type="badge" style={{ color: theme.accent }}>
+                        {index + 1}
+                      </ThemedText>
+                    </View>
+                    <ThemedText style={styles.stepText}>{step}</ThemedText>
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
+
+          {recipe.notes ? (
+            <>
+              <ThemedText
+                type="sectionLabel"
+                themeColor="textMuted"
+                style={styles.sectionSpacing}>
+                Notes
               </ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
-                Every amount is recalculated so the ratios stay right.
+                {recipe.notes}
               </ThemedText>
-            </ThemedView>
-          </Pressable>
-        )}
+            </>
+          ) : null}
 
-        <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeading}>
-          Ingredients
-        </ThemedText>
-        {recipe.ingredients.length === 0 ? (
-          <ThemedText type="small" themeColor="textSecondary">
-            No ingredients listed.
-          </ThemedText>
-        ) : (
-          <ThemedView type="backgroundElement" style={styles.card}>
-            {(check?.checks ?? []).map((item) => (
-              <IngredientRow key={item.ingredient.id} check={item} />
-            ))}
-          </ThemedView>
-        )}
-
-        <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeading}>
-          Steps
-        </ThemedText>
-        {recipe.steps.length === 0 ? (
-          <ThemedText type="small" themeColor="textSecondary">
-            No steps written yet.
-          </ThemedText>
-        ) : (
-          <ThemedView style={styles.steps}>
-            {recipe.steps.map((step, index) => (
-              <ThemedView key={index} style={styles.stepRow}>
-                <ThemedText type="smallBold" themeColor="textSecondary" style={styles.stepNumber}>
-                  {index + 1}
-                </ThemedText>
-                <ThemedText style={styles.stepText}>{step}</ThemedText>
-              </ThemedView>
-            ))}
-          </ThemedView>
-        )}
-
-        {recipe.notes ? (
-          <>
-            <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeading}>
-              Notes
+          {madeMessage ? (
+            <ThemedText type="meta" themeColor="textSecondary" style={styles.sectionSpacing}>
+              {madeMessage}
             </ThemedText>
-            <ThemedText type="small">{recipe.notes}</ThemedText>
-          </>
-        ) : null}
+          ) : null}
 
-        {madeMessage ? (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.madeMessage}>
-            {madeMessage}
-          </ThemedText>
-        ) : null}
-
-        {recipe.ingredients.length > 0 &&
-          (confirming === 'made' ? (
+          {confirming === 'made' && (
             <ConfirmPanel
               message={deductionPreview()}
               confirmLabel="Deduct"
               onConfirm={() => void doDeduct()}
               onCancel={() => setConfirming(null)}
             />
-          ) : (
-            <Pressable onPress={() => setConfirming('made')}>
-              <ThemedView type="backgroundSelected" style={styles.button}>
-                <ThemedText type="smallBold">
-                  {scale === 1 ? 'I made this' : `I made this (${formatNumber(scale)}× batch)`}
+          )}
+
+          {confirming === 'delete' && (
+            <ConfirmPanel
+              message={`Delete “${recipe.title}”?`}
+              confirmLabel="Delete"
+              destructive
+              onConfirm={() => void doDelete()}
+              onCancel={() => setConfirming(null)}
+            />
+          )}
+
+          {recipe.ingredients.length > 0 && confirming !== 'made' && (
+            <Pressable onPress={() => setConfirming('made')} style={styles.primaryWrap}>
+              <View style={[styles.primaryButton, { backgroundColor: theme.accent }]}>
+                <Icon name="restaurant_menu" size={19} color={theme.accentText} />
+                <ThemedText type="cardTitle" style={{ color: theme.accentText }}>
+                  {scale === 1
+                    ? 'I made this — deduct from pantry'
+                    : `I made this (${formatNumber(scale)}× batch)`}
                 </ThemedText>
-              </ThemedView>
+              </View>
             </Pressable>
-          ))}
+          )}
 
-        <Pressable onPress={() => router.push(`/recipe/edit/${recipe.id}`)}>
-          <ThemedView type="backgroundElement" style={styles.button}>
-            <ThemedText type="smallBold">Edit recipe</ThemedText>
-          </ThemedView>
-        </Pressable>
-
-        {confirming === 'delete' ? (
-          <ConfirmPanel
-            message={`Delete “${recipe.title}”?`}
-            confirmLabel="Delete"
-            destructive
-            onConfirm={() => void doDelete()}
-            onCancel={() => setConfirming(null)}
-          />
-        ) : (
-          <Pressable onPress={() => setConfirming('delete')}>
-            <ThemedView type="backgroundElement" style={styles.button}>
-              <ThemedText type="smallBold" style={styles.deleteText}>
-                Delete recipe
-              </ThemedText>
-            </ThemedView>
-          </Pressable>
-        )}
+          <View style={styles.secondaryRow}>
+            <Pressable
+              onPress={() => router.push(`/recipe/edit/${recipe.id}`)}
+              style={styles.secondaryWrap}>
+              <View
+                style={[
+                  styles.secondaryButton,
+                  { backgroundColor: theme.surface, borderColor: theme.hairline },
+                ]}>
+                <ThemedText type="chip">Edit recipe</ThemedText>
+              </View>
+            </Pressable>
+            {confirming !== 'delete' && (
+              <Pressable onPress={() => setConfirming('delete')} style={styles.secondaryWrap}>
+                <View
+                  style={[
+                    styles.secondaryButton,
+                    { backgroundColor: theme.surface, borderColor: theme.hairline },
+                  ]}>
+                  <ThemedText type="chip" style={{ color: theme.danger }}>
+                    Delete recipe
+                  </ThemedText>
+                </View>
+              </Pressable>
+            )}
+          </View>
+        </View>
       </ScrollView>
     </ThemedView>
   );
@@ -269,13 +396,16 @@ function formatNumber(value: number): string {
 }
 
 function MakeStatus({ check }: { check: RecipeCheck }) {
+  const theme = useTheme();
+
   if (check.canMake) {
     return (
-      <ThemedView type="backgroundElement" style={styles.statusBanner}>
-        <ThemedText type="smallBold" style={styles.okText}>
-          You have everything for this.
+      <View style={styles.statusRow}>
+        <Icon name="circle" size={12} color={theme.success} />
+        <ThemedText type="meta" style={[styles.statusText, { color: theme.success }]}>
+          You have everything for this
         </ThemedText>
-      </ThemedView>
+      </View>
     );
   }
 
@@ -283,32 +413,38 @@ function MakeStatus({ check }: { check: RecipeCheck }) {
   const short = check.problems.filter((p) => p.status === 'short');
 
   return (
-    <ThemedView type="backgroundElement" style={styles.statusBanner}>
-      <ThemedText type="smallBold" style={styles.warnText}>
-        {missing.length > 0 && `Missing ${missing.map((p) => p.ingredient.name).join(', ')}`}
-        {missing.length > 0 && short.length > 0 && ' · '}
-        {short.length > 0 && `Short on ${short.map((p) => p.ingredient.name).join(', ')}`}
-      </ThemedText>
+    <View style={styles.statusBlock}>
+      <View style={styles.statusRow}>
+        <Icon name="circle" size={12} color={theme.warn} />
+        <ThemedText type="meta" style={[styles.statusText, { color: theme.warn }]}>
+          {missing.length > 0 && `Missing ${missing.map((p) => p.ingredient.name).join(', ')}`}
+          {missing.length > 0 && short.length > 0 && ' · '}
+          {short.length > 0 && `Short on ${short.map((p) => p.ingredient.name).join(', ')}`}
+        </ThemedText>
+      </View>
       {check.canMakeWithSubstitutes && (
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="meta" themeColor="textSecondary">
           You can still make this using the swaps below.
         </ThemedText>
       )}
-    </ThemedView>
+    </View>
   );
 }
 
-function IngredientRow({ check }: { check: IngredientCheck }) {
+function IngredientRow({ check, first }: { check: IngredientCheck; first: boolean }) {
+  const theme = useTheme();
   const { ingredient, match, status, needed, available, substitutes } = check;
-  const color = status === 'enough' ? undefined : status === 'short' ? '#f5a524' : '#e5484d';
+  const short = status !== 'enough';
   const swap = substitutes[0];
 
   return (
-    <ThemedView type="backgroundElement" style={styles.ingredientBlock}>
-      <ThemedView type="backgroundElement" style={styles.ingredientRow}>
-        <ThemedView type="backgroundElement" style={styles.ingredientText}>
-          <ThemedText>{ingredient.name}</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
+    <View style={[styles.ingredientBlock, !first && { borderTopColor: theme.hairline }]}>
+      <View style={styles.ingredientRow}>
+        <View style={styles.ingredientText}>
+          <ThemedText type="small" style={styles.ingredientName}>
+            {ingredient.name}
+          </ThemedText>
+          <ThemedText type="meta" style={{ color: short ? theme.warn : theme.textMuted }}>
             {status === 'missing'
               ? 'not in pantry'
               : status === 'short'
@@ -319,26 +455,28 @@ function IngredientRow({ check }: { check: IngredientCheck }) {
                       : ''
                   }`}
           </ThemedText>
-        </ThemedView>
-        <ThemedText type="smallBold" style={color ? { color } : undefined}>
+        </View>
+        <ThemedText
+          type="small"
+          style={[styles.ingredientAmount, { color: short ? theme.warn : theme.text }]}>
           {formatQuantity(needed, ingredient.unit)}
         </ThemedText>
-      </ThemedView>
+      </View>
 
       {swap && (
-        <ThemedView type="backgroundElement" style={styles.substitute}>
-          <ThemedText type="small" style={styles.substituteText}>
+        <View style={[styles.substitute, { borderLeftColor: theme.warn }]}>
+          <ThemedText type="meta" style={{ color: theme.warn, fontWeight: '700' }}>
             Swap: {formatQuantity(swap.amount, swap.unit)}
             {swap.unit === 'each' ? ` × ${swap.item.name}` : ` ${swap.item.name}`}
           </ThemedText>
           {swap.substitution.notes ? (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="meta" themeColor="textMuted">
               {swap.substitution.notes}
             </ThemedText>
           ) : null}
-        </ThemedView>
+        </View>
       )}
-    </ThemedView>
+    </View>
   );
 }
 
@@ -346,105 +484,180 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  content: {
-    padding: 20,
-    gap: 8,
-    paddingBottom: 40,
+  scroll: {
+    paddingBottom: Spacing.five,
   },
   missing: {
     textAlign: 'center',
-    padding: 40,
+    padding: Spacing.five,
   },
   hero: {
+    height: HERO_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroImage: {
     width: '100%',
-    height: 180,
-    borderRadius: 14,
-    marginBottom: 4,
+    height: '100%',
   },
-  sectionHeading: {
-    marginTop: 16,
+  heroBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.screen,
   },
-  statusBanner: {
-    marginTop: 12,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+  heroActions: {
+    flexDirection: 'row',
+    gap: Spacing.two,
   },
-  scaleRow: {
+  sheet: {
+    marginTop: -24,
+    borderTopLeftRadius: Radius.sheet,
+    borderTopRightRadius: Radius.sheet,
+    paddingHorizontal: Spacing.screen,
+    paddingTop: Spacing.four,
+    gap: Spacing.two,
+  },
+  metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 12,
   },
-  scalePill: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
+  statusBlock: {
+    gap: 2,
+    marginTop: 4,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  statusText: {
+    flex: 1,
+    fontWeight: '700',
   },
   fitBanner: {
-    marginTop: 8,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    gap: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    borderWidth: 1,
+    borderRadius: Radius.button,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginTop: Spacing.two,
   },
-  okText: {
-    color: '#30a46c',
+  fitText: {
+    flex: 1,
+    gap: 1,
   },
-  warnText: {
-    color: '#f5a524',
+  fitTitle: {
+    fontWeight: '700',
+  },
+  scaleAction: {
+    borderRadius: Radius.pill,
+    paddingVertical: 9,
+    paddingHorizontal: 18,
+  },
+  scaleActionText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+    marginTop: Spacing.three,
+  },
+  batchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  sectionSpacing: {
+    marginTop: Spacing.four,
   },
   card: {
-    borderRadius: 12,
-    padding: 12,
-    gap: 10,
+    borderRadius: Radius.button,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    ...Shadows.card,
   },
   ingredientBlock: {
-    gap: 6,
+    paddingVertical: 12,
+    gap: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'transparent',
   },
   ingredientRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 12,
-  },
-  substitute: {
-    borderLeftWidth: 2,
-    borderLeftColor: '#f5a524',
-    paddingLeft: 10,
-    gap: 1,
-  },
-  substituteText: {
-    color: '#f5a524',
+    justifyContent: 'space-between',
+    gap: Spacing.three,
   },
   ingredientText: {
     flex: 1,
     gap: 1,
   },
+  ingredientName: {
+    fontWeight: '600',
+    fontSize: 14.5,
+  },
+  ingredientAmount: {
+    fontWeight: '700',
+  },
+  substitute: {
+    borderLeftWidth: 2,
+    paddingLeft: 10,
+    gap: 1,
+  },
   steps: {
-    gap: 10,
+    gap: Spacing.three,
   },
   stepRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: Spacing.two,
   },
-  stepNumber: {
-    minWidth: 18,
-    paddingTop: 3,
+  stepChip: {
+    width: 24,
+    height: 24,
+    borderRadius: Radius.stepChip,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   stepText: {
     flex: 1,
+    lineHeight: 21,
   },
-  madeMessage: {
-    marginTop: 12,
+  primaryWrap: {
+    marginTop: Spacing.four,
   },
-  button: {
-    marginTop: 10,
-    borderRadius: 12,
-    paddingVertical: 14,
+  primaryButton: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.two,
+    borderRadius: Radius.button,
+    paddingVertical: 16,
+    ...Shadows.button,
   },
-  deleteText: {
-    color: '#e5484d',
+  secondaryRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    marginTop: Spacing.two,
+  },
+  secondaryWrap: {
+    flex: 1,
+  },
+  secondaryButton: {
+    borderWidth: 1,
+    borderRadius: Radius.button,
+    paddingVertical: 13,
+    alignItems: 'center',
   },
 });
